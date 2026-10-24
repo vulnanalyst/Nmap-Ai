@@ -1,0 +1,99 @@
+{
+  "random_forest": {
+    "name": "random_forest",
+    "precision_macro": 0.9975124378109452,
+    "recall_macro": 0.9975,
+    "f1_macro": 0.9974999843749024,
+    "balanced_accuracy": 0.9975,
+    "confusion_matrix": [
+      [
+        200,
+        0
+      ],
+      [
+        1,
+        199
+      ]
+    ],
+    "labels": [
+      0,
+      1
+    ],
+    "classification_report": {
+      "0": {
+        "precision": 0.9950248756218906,
+        "recall": 1.0,
+        "f1-score": 0.9975062344139651,
+        "support": 200.0
+      },
+      "1": {
+        "precision": 1.0,
+        "recall": 0.995,
+        "f1-score": 0.9974937343358395,
+        "support": 200.0
+      },
+      "accuracy": 0.9975,
+      "macro avg": {
+        "precision": 0.9975124378109452,
+        "recall": 0.9975,
+        "f1-score": 0.9974999843749024,
+        "support": 400.0
+      },
+      "weighted avg": {
+        "precision": 0.9975124378109453,
+        "recall": 0.9975,
+        "f1-score": 0.9974999843749024,
+        "support": 400.0
+      }
+    }
+  },
+  "gradient_boosting": null,
+  "selected": "random_forest",
+  "feature_importance": [
+    {
+      "feature": "Fwd Packet Length Max",
+      "importance": 0.24550747813149354
+    },
+    {
+      "feature": "Total Length of Fwd Packets",
+      "importance": 0.2341149842978766
+    },
+    {
+      "feature": "Average Packet Size",
+      "importance": 0.1926338516677107
+    },
+    {
+      "feature": "Flow Duration",
+      "importance": 0.07781597538005681
+    },
+    {
+      "feature": "Flow Packets/s",
+      "importance": 0.06165838647823132
+    },
+    {
+      "feature": "Flow Bytes/s",
+      "importance": 0.055368186966508345
+    },
+    {
+      "feature": "Bwd Packet Length Max",
+      "importance": 0.04743073109430074
+    },
+    {
+      "feature": "Total Fwd Packets",
+      "importance": 0.04638297635271943
+    },
+    {
+      "feature": "Destination Port",
+      "importance": 0.03331502591998524
+    },
+    {
+      "feature": "Total Backward Packets",
+      "importance": 0.005772403711117317
+    }
+  ],
+  "train_rows": 1600,
+  "test_rows": 400,
+  "dataset_source": "/home/vulnanalyst/Projects/Nmap-Ai/dataset/final_dataset.csv",
+  "trained_at": "2026-10-24T18:39:09.696392+00:00",
+  "version": "rf-20261024T183909Z"
+}

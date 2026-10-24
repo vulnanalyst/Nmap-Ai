@@ -1,0 +1,31 @@
+from backend.app.models.entities import (
+    Alert,
+    AlertNote,
+    AuthorizedTarget,
+    Finding,
+    Host,
+    IngestionHealth,
+    ModelVersion,
+    ReportRecord,
+    ScanJob,
+    Service,
+    Setting,
+    TrafficEvent,
+    TrainingRun,
+)
+
+__all__ = [
+    "Alert",
+    "AlertNote",
+    "AuthorizedTarget",
+    "Finding",
+    "Host",
+    "IngestionHealth",
+    "ModelVersion",
+    "ReportRecord",
+    "ScanJob",
+    "Service",
+    "Setting",
+    "TrafficEvent",
+    "TrainingRun",
+]

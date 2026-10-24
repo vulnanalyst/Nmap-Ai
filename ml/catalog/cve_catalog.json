@@ -1,0 +1,56 @@
+{
+  "source": "local_reference_catalog",
+  "disclaimer": "Public reference data for version-range matching. A catalog entry is not a finding until an observed product/version or scanner check matches.",
+  "entries": [
+    {
+      "cve": "CVE-2011-2523",
+      "title": "vsftpd 2.3.4 backdoor command execution",
+      "cvss": 10.0,
+      "severity": "critical",
+      "products": [{"product": "vsftpd", "version_exact": "2.3.4"}],
+      "reference_url": "https://nvd.nist.gov/vuln/detail/CVE-2011-2523",
+      "impact": "The 2.3.4 vsftpd build distributed with a smiley-face backdoor can yield remote command execution.",
+      "remediation": "Remove vsftpd 2.3.4 and install a legitimate current release from a trusted vendor.",
+      "validation_if_version_exact": "validated_vulnerability"
+    },
+    {
+      "cve": "CVE-2014-0160",
+      "title": "OpenSSL Heartbleed information disclosure",
+      "cvss": 7.5,
+      "severity": "high",
+      "products": [
+        {"product": "openssl", "version_min": "1.0.1", "version_max_exclusive": "1.0.1g"}
+      ],
+      "reference_url": "https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
+      "impact": "Memory contents of the TLS process may be disclosed to a remote client.",
+      "remediation": "Upgrade OpenSSL to 1.0.1g or later and rotate exposed credentials.",
+      "validation_if_version_exact": "suspected"
+    },
+    {
+      "cve": "CVE-2017-0144",
+      "title": "Windows SMBv1 remote code execution (MS17-010)",
+      "cvss": 8.1,
+      "severity": "high",
+      "products": [
+        {"service": "microsoft-ds", "requires_script": "smb-vuln-ms17-010"}
+      ],
+      "reference_url": "https://nvd.nist.gov/vuln/detail/CVE-2017-0144",
+      "impact": "Remote code execution against SMBv1 if the host is unpatched.",
+      "remediation": "Disable SMBv1 and apply Microsoft security bulletin MS17-010.",
+      "validation_if_version_exact": "suspected"
+    },
+    {
+      "cve": "CVE-2018-15473",
+      "title": "OpenSSH user enumeration via authentication responses",
+      "cvss": 5.3,
+      "severity": "medium",
+      "products": [
+        {"product": "openssh", "version_max_exclusive": "7.7"}
+      ],
+      "reference_url": "https://nvd.nist.gov/vuln/detail/CVE-2018-15473",
+      "impact": "A remote unauthenticated actor may determine whether a username exists.",
+      "remediation": "Upgrade OpenSSH to 7.7 or later.",
+      "validation_if_version_exact": "suspected"
+    }
+  ]
+}
