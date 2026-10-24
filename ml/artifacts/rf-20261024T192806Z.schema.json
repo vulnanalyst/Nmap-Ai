@@ -1,0 +1,28 @@
+{
+  "version": "rf-20261024T192806Z",
+  "model_type": "RandomForestClassifier",
+  "algorithm": "random_forest",
+  "feature_names": [
+    "Destination Port",
+    "Flow Duration",
+    "Total Fwd Packets",
+    "Total Backward Packets",
+    "Total Length of Fwd Packets",
+    "Fwd Packet Length Max",
+    "Bwd Packet Length Max",
+    "Flow Bytes/s",
+    "Flow Packets/s",
+    "Average Packet Size"
+  ],
+  "classes": [
+    0,
+    1
+  ],
+  "class_names": {
+    "0": "BENIGN",
+    "1": "ATTACK"
+  },
+  "dataset_source": "/home/vulnanalyst/Projects/Nmap-Ai/dataset/final_dataset.csv",
+  "trained_at": "2026-10-24T19:28:06.206300+00:00",
+  "sklearn_note": "Offline CIC-IDS2017 evaluation does not guarantee accuracy on live lab traffic."
+}
