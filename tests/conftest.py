@@ -14,6 +14,7 @@ from backend.app.db.session import init_db, reset_engine
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.app.core.config.repo_root", lambda: tmp_path)
     db_path = tmp_path / "test.db"
     monkeypatch.setenv("NMAP_AI_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("NMAP_AI_API_TOKEN", "test-token")

@@ -4,14 +4,12 @@ import type {
   FindingItem,
   HostItem,
   IngestionStatusItem,
-  MLModelResponse,
   ReportItem,
   ScanJobItem,
   ScanProfileItem,
   SettingsData,
   TopologyData,
   TrafficEventItem,
-  TrainingRunItem,
   WorkflowStatus,
 } from '../types';
 
@@ -21,7 +19,7 @@ const BASE_URL = '/api/v1';
 const TOKEN_KEY = 'nmap_ai_auth_token';
 
 export function getAuthToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || 'test-token';
+  return localStorage.getItem(TOKEN_KEY) || '';
 }
 
 export function setAuthToken(token: string): void {
@@ -32,11 +30,21 @@ export function removeAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 // Unified fetch wrapper
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getAuthToken();
   const headers: Record<string, string> = {
-    'X-API-Key': token,
+    ...(token ? { 'X-API-Key': token } : {}),
     ...(options.headers as Record<string, string>),
   };
 
@@ -58,7 +66,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       // fallback to statusText
     }
-    throw new Error(errorDetail || `HTTP Error ${response.status}`);
+    throw new ApiError(errorDetail || `HTTP Error ${response.status}`, response.status);
   }
 
   return response.json();
@@ -70,10 +78,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const api = {
   // Auth
-  async login(password: string): Promise<{ token: string }> {
+  async login(username: string, password: string): Promise<{ token: string }> {
     const res = await request<{ token: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username: 'lab', password }),
+      body: JSON.stringify({ username, password }),
     });
     setAuthToken(res.token);
     return res;
@@ -84,21 +92,17 @@ export const api = {
   },
 
   // Dashboard
-  async getDashboardSummary(includeDemo = false): Promise<DashboardSummary> {
-    return request<DashboardSummary>(`/dashboard/summary?include_demo=${includeDemo}`);
+  async getDashboardSummary(): Promise<DashboardSummary> {
+    return request<DashboardSummary>('/dashboard/summary');
   },
 
   // Hosts & Topology
-  async getHosts(includeDemo = false): Promise<{ items: HostItem[]; count: number }> {
-    return request<{ items: HostItem[]; count: number }>(`/hosts?include_demo=${includeDemo}`);
+  async getHosts(): Promise<{ items: HostItem[]; count: number }> {
+    return request<{ items: HostItem[]; count: number }>('/hosts');
   },
 
-  async getHost(hostId: number): Promise<HostItem> {
-    return request<HostItem>(`/hosts/${hostId}`);
-  },
-
-  async getTopology(includeDemo = false): Promise<TopologyData> {
-    return request<TopologyData>(`/topology?include_demo=${includeDemo}`);
+  async getTopology(): Promise<TopologyData> {
+    return request<TopologyData>('/topology');
   },
 
   async compareScans(leftScanId: string, rightScanId: string): Promise<Record<string, unknown>> {
@@ -152,10 +156,6 @@ export const api = {
     return request<{ items: ScanJobItem[] }>('/scans');
   },
 
-  async getScan(scanId: string): Promise<ScanJobItem> {
-    return request<ScanJobItem>(`/scans/${scanId}`);
-  },
-
   async cancelScan(scanId: string): Promise<ScanJobItem> {
     return request<ScanJobItem>(`/scans/${scanId}/cancel`, { method: 'POST' });
   },
@@ -185,20 +185,14 @@ export const api = {
     validation_status?: string;
     q?: string;
     cve?: string;
-    include_demo?: boolean;
   }): Promise<{ items: FindingItem[]; count: number }> {
     const query = new URLSearchParams();
     if (params?.severity) query.set('severity', params.severity);
     if (params?.validation_status) query.set('validation_status', params.validation_status);
     if (params?.q) query.set('q', params.q);
     if (params?.cve) query.set('cve', params.cve);
-    if (params?.include_demo) query.set('include_demo', 'true');
     const qs = query.toString();
     return request<{ items: FindingItem[]; count: number }>(`/findings${qs ? `?${qs}` : ''}`);
-  },
-
-  async getFinding(findingId: string): Promise<FindingItem> {
-    return request<FindingItem>(`/findings/${findingId}`);
   },
 
   async updateFindingStatus(findingId: string, status: WorkflowStatus): Promise<FindingItem> {
@@ -212,12 +206,10 @@ export const api = {
   async getAlerts(params?: {
     status?: string;
     method?: string;
-    include_demo?: boolean;
   }): Promise<{ items: AlertItem[]; count: number }> {
     const query = new URLSearchParams();
     if (params?.status) query.set('status', params.status);
     if (params?.method) query.set('method', params.method);
-    if (params?.include_demo) query.set('include_demo', 'true');
     const qs = query.toString();
     return request<{ items: AlertItem[]; count: number }>(`/alerts${qs ? `?${qs}` : ''}`);
   },
@@ -234,56 +226,8 @@ export const api = {
     return request<IngestionStatusItem>('/traffic/status');
   },
 
-  async getTrafficEvents(includeDemo = false): Promise<{ items: TrafficEventItem[] }> {
-    return request<{ items: TrafficEventItem[] }>(`/traffic/events?include_demo=${includeDemo}`);
-  },
-
-  async ingestPacket(packet: {
-    src_addr: string;
-    dst_addr: string;
-    src_port?: number;
-    dst_port?: number;
-    protocol?: string;
-    packet_length?: number;
-  }): Promise<{ id: number; ml_status: string; feature_complete: boolean }> {
-    return request<{ id: number; ml_status: string; feature_complete: boolean }>('/traffic/ingest', {
-      method: 'POST',
-      body: JSON.stringify(packet),
-    });
-  },
-
-  // ML Lab
-  async getModelInfo(): Promise<MLModelResponse> {
-    return request<MLModelResponse>('/ml/model');
-  },
-
-  async inferFeatures(features: Record<string, number> | number[]): Promise<{
-    prediction: number;
-    label: string;
-    probability: number;
-    model_version: string;
-    class_probabilities: Record<string, number>;
-  }> {
-    return request<{
-      prediction: number;
-      label: string;
-      probability: number;
-      model_version: string;
-      class_probabilities: Record<string, number>;
-    }>('/ml/infer', {
-      method: 'POST',
-      body: JSON.stringify({ features }),
-    });
-  },
-
-  async getTrainingRuns(): Promise<{ items: TrainingRunItem[] }> {
-    return request<{ items: TrainingRunItem[] }>('/ml/training');
-  },
-
-  async startTraining(): Promise<{ id: string; status: string }> {
-    return request<{ id: string; status: string }>('/ml/training', {
-      method: 'POST',
-    });
+  async getTrafficEvents(): Promise<{ items: TrafficEventItem[] }> {
+    return request<{ items: TrafficEventItem[] }>('/traffic/events');
   },
 
   // Reports
@@ -297,12 +241,19 @@ export const api = {
     });
   },
 
-  getReportJsonUrl(reportId: string): string {
-    return `${BASE_URL}/reports/${reportId}/json`;
-  },
-
-  getReportPdfUrl(reportId: string): string {
-    return `${BASE_URL}/reports/${reportId}/pdf`;
+  async downloadReport(reportId: string, format: 'json' | 'pdf'): Promise<void> {
+    const response = await fetch(`${BASE_URL}/reports/${reportId}/${format}`, {
+      headers: getAuthToken() ? { 'X-API-Key': getAuthToken() } : {},
+    });
+    if (!response.ok) {
+      throw new ApiError(response.statusText || `HTTP Error ${response.status}`, response.status);
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `report-${reportId}.${format}`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
 
   // Settings & Targets
@@ -330,15 +281,4 @@ export const api = {
     });
   },
 
-  async seedDemoData(): Promise<{ status: string; message: string }> {
-    return request<{ status: string; message: string }>('/settings/demo/seed', {
-      method: 'POST',
-    });
-  },
-
-  async clearDemoData(): Promise<{ status: string; message: string }> {
-    return request<{ status: string; message: string }>('/settings/demo/seed', {
-      method: 'DELETE',
-    });
-  },
 };

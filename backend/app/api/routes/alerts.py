@@ -36,10 +36,9 @@ def _row(a: Alert) -> dict:
 
 
 @router.get("")
-def list_alerts(_: AuthDep, db: DbDep, status: str | None = None, method: str | None = None, include_demo: bool = False):
+def list_alerts(_: AuthDep, db: DbDep, status: str | None = None, method: str | None = None):
     q = db.query(Alert)
-    if not include_demo:
-        q = q.filter(Alert.data_source != "demo")
+    q = q.filter(Alert.data_source != "demo")
     if status:
         q = q.filter(Alert.status == status)
     if method:
@@ -50,7 +49,7 @@ def list_alerts(_: AuthDep, db: DbDep, status: str | None = None, method: str | 
 
 @router.patch("/{alert_id}")
 def patch_alert(_: AuthDep, db: DbDep, alert_id: int, body: AlertPatch):
-    row = db.query(Alert).filter_by(id=alert_id).one_or_none()
+    row = db.query(Alert).filter(Alert.id == alert_id, Alert.data_source != "demo").one_or_none()
     if not row:
         raise AppError("Alert not found", status_code=404, code="not_found")
     if body.status:

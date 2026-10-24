@@ -45,11 +45,9 @@ def list_findings(
     validation_status: str | None = None,
     q: str | None = Query(None),
     cve: str | None = None,
-    include_demo: bool = False,
 ):
     query = db.query(Finding)
-    if not include_demo:
-        query = query.filter(Finding.data_source != "demo")
+    query = query.filter(Finding.data_source != "demo")
     if severity:
         query = query.filter(Finding.severity == severity)
     if validation_status:
@@ -65,7 +63,7 @@ def list_findings(
 
 @router.get("/{finding_id}")
 def get_finding(_: AuthDep, db: DbDep, finding_id: str):
-    row = db.query(Finding).filter_by(id=finding_id).one_or_none()
+    row = db.query(Finding).filter(Finding.id == finding_id, Finding.data_source != "demo").one_or_none()
     if not row:
         raise AppError("Finding not found", status_code=404, code="not_found")
     return _row(row)
@@ -73,7 +71,7 @@ def get_finding(_: AuthDep, db: DbDep, finding_id: str):
 
 @router.patch("/{finding_id}")
 def patch_finding(_: AuthDep, db: DbDep, finding_id: str, body: FindingPatch):
-    row = db.query(Finding).filter_by(id=finding_id).one_or_none()
+    row = db.query(Finding).filter(Finding.id == finding_id, Finding.data_source != "demo").one_or_none()
     if not row:
         raise AppError("Finding not found", status_code=404, code="not_found")
     row.workflow_status = body.workflow_status

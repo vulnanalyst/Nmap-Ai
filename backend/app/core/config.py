@@ -1,7 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.app.core.paths import repo_root
@@ -29,14 +28,9 @@ class Settings(BaseSettings):
     target_name: str = ""
     target_ip: str = ""
     authorized_targets: str = ""
-    capture_interface: str = ""
     ingest_host: str = "127.0.0.1"
     ingest_port: int = 9999
-    demo_mode: bool = False
     log_level: str = "INFO"
-    timezone: str = "UTC"
-    nvd_api_key: str = Field(default="", validation_alias="NVD_API_KEY")
-
     @property
     def root(self) -> Path:
         return repo_root()

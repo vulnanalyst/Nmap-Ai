@@ -20,6 +20,84 @@ def test_auth_required(client):
     assert res.status_code == 401
 
 
+def test_saved_scanner_identity_appears_in_topology(client, auth_headers):
+    invalid = client.patch(
+        "/api/v1/settings",
+        headers=auth_headers,
+        json={"values": {"scanner_name": "Should roll back", "scanner_ip": "not-an-ip"}},
+    )
+    assert invalid.status_code == 400
+    response = client.patch(
+        "/api/v1/settings",
+        headers=auth_headers,
+        json={"values": {"scanner_name": "Lab scanner", "scanner_ip": "192.0.2.5"}},
+    )
+    assert response.status_code == 200
+    topology = client.get("/api/v1/topology", headers=auth_headers)
+    assert topology.status_code == 200
+    assert topology.json()["nodes"][0]["label"] == "Lab scanner"
+    assert topology.json()["nodes"][0]["ip"] == "192.0.2.5"
+
+
+def test_legacy_demo_records_are_hidden_from_operational_apis(client, auth_headers):
+    from backend.app.models import Alert, Finding, Host, ReportRecord, ScanJob
+
+    db = get_session_factory()()
+    scan = ScanJob(
+        id="legacy-demo-scan",
+        profile="tcp_connect",
+        targets="192.0.2.10",
+        status="completed",
+        data_source="demo",
+    )
+    db.add(scan)
+    db.flush()
+    host = Host(scan_id=scan.id, ip="192.0.2.10", state="up", data_source="demo")
+    db.add(host)
+    finding = Finding(
+        id="legacy-demo-finding",
+        scan_id=scan.id,
+        host_ip="192.0.2.10",
+        title="Legacy demo finding",
+        fingerprint="legacy-demo-finding",
+        data_source="demo",
+    )
+    alert = Alert(
+        detection_method="demo",
+        title="Legacy demo alert",
+        fingerprint="legacy-demo-alert",
+        data_source="demo",
+    )
+    report = ReportRecord(
+        id="legacy-demo-report",
+        json_path="/nonexistent/legacy-demo.json",
+        data_source="demo",
+    )
+    db.add_all([finding, alert, report])
+    db.commit()
+    host_id = host.id
+    alert_id = alert.id
+    db.close()
+
+    assert client.get("/api/v1/scans", headers=auth_headers).json()["items"] == []
+    assert client.get("/api/v1/scans/legacy-demo-scan", headers=auth_headers).status_code == 404
+    assert client.get("/api/v1/hosts", headers=auth_headers).json()["items"] == []
+    assert client.get(f"/api/v1/hosts/{host_id}", headers=auth_headers).status_code == 404
+    assert client.get("/api/v1/findings", headers=auth_headers).json()["items"] == []
+    assert client.get("/api/v1/findings/legacy-demo-finding", headers=auth_headers).status_code == 404
+    assert client.get("/api/v1/alerts", headers=auth_headers).json()["items"] == []
+    assert client.patch(
+        f"/api/v1/alerts/{alert_id}",
+        headers=auth_headers,
+        json={"status": "resolved"},
+    ).status_code == 404
+    assert client.get("/api/v1/reports", headers=auth_headers).json()["items"] == []
+    assert client.get(
+        "/api/v1/reports/legacy-demo-report/json",
+        headers=auth_headers,
+    ).status_code == 404
+
+
 def test_invalid_target_rejected(client, auth_headers):
     res = client.post(
         "/api/v1/scans",
@@ -144,25 +222,77 @@ def test_duplicate_import_dedupes_findings(client, auth_headers):
     assert len(fingerprints) == len(set(fingerprints))
 
 
-def test_demo_mode_isolation_and_seeding(client, auth_headers):
-    # 1. Seed demo data
-    seed_res = client.post("/api/v1/settings/demo/seed", headers=auth_headers)
-    assert seed_res.status_code == 200
+def test_demo_seeding_endpoints_are_not_available(client, auth_headers):
+    response = client.post("/api/v1/settings/demo/seed", headers=auth_headers)
+    assert response.status_code == 404
 
-    # 2. Query summary without demo mode -> demo data not included
-    live_summary = client.get("/api/v1/dashboard/summary?include_demo=false", headers=auth_headers).json()
-    assert live_summary["hosts_total"] == 0
 
-    # 3. Query summary with demo mode -> demo data included
-    demo_summary = client.get("/api/v1/dashboard/summary?include_demo=true", headers=auth_headers).json()
-    assert demo_summary["hosts_total"] >= 3
-    assert demo_summary["ports_open"] >= 4
+def test_oversized_xml_import_is_rejected(client, auth_headers, monkeypatch):
+    from backend.app.api.routes import scans
 
-    # 4. Clear demo data
-    clear_res = client.delete("/api/v1/settings/demo/seed", headers=auth_headers)
-    assert clear_res.status_code == 200
+    monkeypatch.setattr(scans, "MAX_XML_UPLOAD_BYTES", 16)
+    response = client.post(
+        "/api/v1/scans/import",
+        headers=auth_headers,
+        files={"file": ("large.xml", b"x" * 17, "application/xml")},
+    )
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "upload_too_large"
 
-    # 5. Verify demo data removed
-    cleared_summary = client.get("/api/v1/dashboard/summary?include_demo=true", headers=auth_headers).json()
-    assert cleared_summary["hosts_total"] == 0
 
+def test_cancel_scan_terminates_its_process(client):
+    from backend.app.models import ScanJob
+    from backend.app.services.scan_service import (
+        _CANCELLED_SCANS,
+        _PROCESS_LOCK,
+        _RUNNING_PROCESSES,
+        cancel_scan,
+    )
+
+    class RunningProcess:
+        terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+    process = RunningProcess()
+    db = get_session_factory()()
+    job = ScanJob(id="cancel-test", profile="tcp_connect", targets="192.0.2.10", status="running", argv=[])
+    db.add(job)
+    db.commit()
+    with _PROCESS_LOCK:
+        _RUNNING_PROCESSES[job.id] = process
+    try:
+        cancelled = cancel_scan(db, job.id)
+        assert cancelled.status == "cancelled"
+        assert process.terminated
+        assert job.id in _CANCELLED_SCANS
+    finally:
+        with _PROCESS_LOCK:
+            _RUNNING_PROCESSES.pop(job.id, None)
+            _CANCELLED_SCANS.discard(job.id)
+        db.close()
+
+
+def test_cancelled_scan_does_not_spawn_nmap(tmp_path, monkeypatch):
+    from backend.app.services.scan_service import (
+        _CANCELLED_SCANS,
+        _PROCESS_LOCK,
+        _run_nmap_process,
+    )
+
+    def unexpected_spawn(*args, **kwargs):
+        raise AssertionError("cancelled scan must not spawn Nmap")
+
+    monkeypatch.setattr("backend.app.services.scan_service.subprocess.Popen", unexpected_spawn)
+    scan_id = "cancel-before-spawn"
+    with _PROCESS_LOCK:
+        _CANCELLED_SCANS.add(scan_id)
+    try:
+        assert _run_nmap_process(scan_id, [], tmp_path / "scan.xml", 1) == (-1, "", "")
+    finally:
+        with _PROCESS_LOCK:
+            _CANCELLED_SCANS.discard(scan_id)

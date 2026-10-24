@@ -7,10 +7,8 @@ from backend.app.models import Alert, Finding, Host, ScanJob, Service, TrafficEv
 from ml.inference.predict import latest_artifact
 
 
-def dashboard_summary(db: Session, include_demo: bool = False) -> dict:
+def dashboard_summary(db: Session) -> dict:
     def scoped(query, model):
-        if include_demo:
-            return query
         return query.filter(model.data_source != "demo")
 
     hosts = scoped(db.query(Host), Host)
@@ -76,5 +74,5 @@ def dashboard_summary(db: Session, include_demo: bool = False) -> dict:
             }
             for s in scans.order_by(ScanJob.created_at.asc()).limit(20).all()
         ],
-        "data_source_filter": "live+import" if not include_demo else "all",
+        "data_source_filter": "live+import",
     }

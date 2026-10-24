@@ -20,6 +20,7 @@ def patch_settings(_: AuthDep, db: DbDep, body: SettingsPatch):
         for key, value in body.values.items():
             upsert(db, key, value)
     except ValueError as exc:
+        db.rollback()
         raise AppError(str(exc), status_code=400, code="invalid_setting") from exc
     db.commit()
     return get_all(db)
@@ -40,18 +41,4 @@ def delete_target(_: AuthDep, db: DbDep, target_id: int):
     db.delete(row)
     db.commit()
     return {"ok": True}
-
-
-@router.post("/demo/seed")
-def seed_demo(_: AuthDep, db: DbDep):
-    from backend.app.demo.fixtures import seed_demo_data
-
-    return seed_demo_data(db)
-
-
-@router.delete("/demo/seed")
-def clear_demo(_: AuthDep, db: DbDep):
-    from backend.app.demo.fixtures import clear_demo_data
-
-    return clear_demo_data(db)
 

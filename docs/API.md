@@ -1,270 +1,76 @@
-# REST API Specification — Nmap-AI Security Intelligence Platform
+# API reference
 
 Base URL: `http://127.0.0.1:8000/api/v1`
 
-Interactive Swagger UI: `http://127.0.0.1:8000/docs`  
-ReDoc UI: `http://127.0.0.1:8000/redoc`
+OpenAPI UI: `http://127.0.0.1:8000/docs`
 
----
+Except for health checks and login, endpoints require `X-API-Key: <NMAP_AI_API_TOKEN>`. `POST /auth/login` checks `NMAP_AI_USERNAME` and `NMAP_AI_PASSWORD` and returns the configured API token. Do not use placeholder credentials on a network-accessible deployment.
 
-## Authentication
+## Health and authentication
 
-All protected endpoints require the `X-API-Key` HTTP header.
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | API process health |
+| GET | `/ready` | Database availability and Nmap installation status; does not return the database URL |
+| POST | `/auth/login` | Exchange configured username/password for the API token |
 
-```http
-X-API-Key: <token>
-```
+## Dashboard and network inventory
 
-Default lab token is defined in `.env` (`NMAP_AI_API_TOKEN`). Default testing fallback token is `test-token`.
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/dashboard/summary` | Counts and recent scan/alert summary from non-demo stored records |
+| GET | `/hosts` | Hosts from completed scans and XML imports |
+| GET | `/hosts/{host_id}` | Host services, Nmap evidence, and related findings |
+| GET | `/topology` | Observed hosts and configured scanner relationships |
+| GET | `/scans/compare?left={scan_id}&right={scan_id}` | Compare observed ports between two scan records |
 
----
+## Scans
 
-## 1. System & Health
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/scans/profiles` | Supported profiles and Nmap installation status |
+| POST | `/scans/preview` | Validate target syntax and preview arguments without scanning |
+| POST | `/scans` | Start an explicitly authorized scan |
+| GET | `/scans` | List scan records |
+| GET | `/scans/{scan_id}` | Get scan status and results |
+| POST | `/scans/{scan_id}/cancel` | Cancel a queued/running scan process |
+| GET | `/scans/{scan_id}/xml` | Download original scan XML |
+| GET | `/scans/{scan_id}/json` | Download normalized scan output |
+| POST | `/scans/import` | Import Nmap XML; uploads are limited to 20 MiB |
 
-### `GET /health`
-Returns system status.
-```json
-{ "status": "ok" }
-```
+Scan requests require a profile, an IP/CIDR target, a matching confirmation string, and `confirm_authorization: true`. The target must be contained in the configured authorized CIDR allowlist. Preview does not execute Nmap. The `vuln_safe` profile uses Nmap's `safe` script category.
 
-### `POST /auth/login`
-Validates credentials and returns API token.
-```json
-// Request
-{ "username": "lab", "password": "labpass" }
+## Findings, alerts, and telemetry
 
-// Response (200 OK)
-{ "token": "test-token" }
-```
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/findings` | List findings; accepts `severity`, `validation_status`, `q`, and `cve` filters |
+| GET | `/findings/{finding_id}` | Get a finding and its evidence |
+| PATCH | `/findings/{finding_id}` | Update analyst workflow status |
+| GET | `/alerts` | List telemetry detection alerts; accepts `status` and `method` filters |
+| PATCH | `/alerts/{alert_id}` | Update alert status or append an investigation note |
+| GET | `/traffic/status` | Read the current ingestion health record |
+| GET | `/traffic/events` | List recent observed telemetry events |
+| POST | `/traffic/ingest` | Submit a telemetry event to the flow/signature pipeline |
 
----
+The standalone HTTP ingestion endpoint is intended for a configured data source. It should not be used to create synthetic operational records. Model predictions and signature matches are indicators, not proof of compromise.
 
-## 2. Dashboard Summary
+## Reports, settings, and model operations
 
-### `GET /dashboard/summary`
-Query parameters:
-- `include_demo` (boolean, optional, default: false)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/reports` | List generated report records |
+| POST | `/reports` | Generate JSON and PDF reports from stored records |
+| GET | `/reports/{report_id}/json` | Download report JSON |
+| GET | `/reports/{report_id}/pdf` | Download report PDF |
+| GET | `/settings` | Read scanner configuration, allowlist, and optional dependency status |
+| PATCH | `/settings` | Update supported non-secret settings |
+| POST | `/settings/targets` | Add an explicitly authorized CIDR |
+| DELETE | `/settings/targets/{target_id}` | Remove an authorized CIDR |
+| GET | `/ml/model` | Read active classifier metadata and offline evaluation |
+| POST | `/ml/infer` | Classify a vector that matches the stored feature schema |
+| GET | `/ml/training` | List model training runs |
+| POST | `/ml/training` | Start training on the configured local benchmark dataset |
+| WS | `/ws/events?token={token}` | Subscribe to authenticated scan events |
 
-Returns aggregate counts derived from database records.
-```json
-{
-  "hosts_total": 3,
-  "hosts_up": 3,
-  "ports_open": 6,
-  "ports_closed": 120,
-  "ports_filtered": 4,
-  "services_observed": 6,
-  "findings_by_severity": {
-    "high": 1,
-    "medium": 1,
-    "low": 1
-  },
-  "findings_by_validation": {
-    "confirmed_by_check": 1,
-    "suspected": 1,
-    "potential_issue": 1
-  },
-  "latest_scan": {
-    "id": "scan-1234",
-    "status": "completed",
-    "profile": "service_version",
-    "created_at": "2026-10-24T18:00:00Z",
-    "duration_seconds": 45.2,
-    "error": null,
-    "data_source": "live"
-  },
-  "model": {
-    "version": "rf-20261024T183348Z",
-    "trained_at": "2026-10-24T18:33:48Z",
-    "disclaimer": "Offline CIC-IDS2017 metrics do not guarantee live-lab accuracy."
-  },
-  "traffic_ml_labels": { "ATTACK": 12, "BENIGN": 140 },
-  "recent_alerts": [],
-  "scan_trend": [],
-  "data_source_filter": "live+import"
-}
-```
-
----
-
-## 3. Host Discovery & Topology
-
-### `GET /hosts`
-Query parameters: `include_demo` (bool)
-Returns observed host inventory with discovered services and OS guesses.
-
-### `GET /hosts/{host_id}`
-Returns granular service banners, Nmap script output, and associated findings for a host.
-
-### `GET /topology`
-Query parameters: `include_demo` (bool)
-Returns nodes (scanner, observed hosts) and edges (provenance-verified scan connections).
-
-### `GET /scans/compare?left={scan_id}&right={scan_id}`
-Calculates deltas (newly opened/closed ports) between two scans.
-
----
-
-## 4. Scan Management
-
-### `GET /scans/profiles`
-Returns supported safe profiles (`host_discovery`, `tcp_connect`, `service_version`, `os_fingerprint`, `vuln_safe`) and Nmap installation status.
-
-### `POST /scans/preview`
-Generates safe command argument array without execution.
-```json
-// Request
-{
-  "profile": "tcp_connect",
-  "target": "192.168.1.10",
-  "confirm_target": "192.168.1.10",
-  "confirm_authorization": true
-}
-
-// Response
-{
-  "argv": ["nmap", "-sT", "--stats-every", "5s", "-oX", "data/scans/id/scan.xml", "192.168.1.10"],
-  "profile": "tcp_connect",
-  "target": "192.168.1.10"
-}
-```
-
-### `POST /scans`
-Launches background scan. Target must match `authorized_targets` CIDR.
-
-### `POST /scans/import`
-Uploads raw Nmap XML file (`multipart/form-data`) to parse and populate database records.
-
-### `GET /scans/{scan_id}/xml`
-Downloads raw XML artifact.
-
----
-
-## 5. Vulnerability Intelligence
-
-### `GET /findings`
-Query parameters:
-- `severity` (`critical`, `high`, `medium`, `low`, `info`)
-- `validation_status` (`validated_vulnerability`, `confirmed_by_check`, `suspected`, `potential_issue`, `no_verified_cve_match`)
-- `q` (free-text search)
-- `cve` (CVE identifier)
-- `include_demo` (bool)
-
-### `PATCH /findings/{finding_id}`
-Updates analyst triage status.
-```json
-// Request
-{ "workflow_status": "confirmed" }
-```
-
----
-
-## 6. Threat Alerts
-
-### `GET /alerts`
-Query parameters: `status`, `method`, `include_demo`.
-
-### `PATCH /alerts/{alert_id}`
-Updates alert status (`acknowledged`, `resolved`) and appends investigation notes.
-```json
-// Request
-{ "status": "acknowledged", "note": "Verified normal administrative SSH session." }
-```
-
----
-
-## 7. Traffic & Ingestion
-
-### `GET /traffic/status`
-Returns ingestion adapter health, packet throughput, and parse error counts.
-
-### `POST /traffic/ingest`
-Submits raw packet telemetry to flow accumulator and inference pipeline.
-```json
-// Request
-{
-  "src_addr": "192.168.1.100",
-  "dst_addr": "192.168.1.50",
-  "src_port": 49152,
-  "dst_port": 445,
-  "protocol": "TCP",
-  "packet_length": 64
-}
-```
-
----
-
-## 8. AI / ML Lab
-
-### `GET /ml/model`
-Returns active model metadata, feature importances, and historical runs.
-
-### `POST /ml/infer`
-Evaluates a 10-feature vector against the loaded Random Forest model.
-```json
-// Request
-{
-  "features": {
-    "Destination Port": 445,
-    "Flow Duration": 120500,
-    "Total Fwd Packets": 15,
-    "Total Backward Packets": 12,
-    "Total Length of Fwd Packets": 960,
-    "Fwd Packet Length Max": 128,
-    "Bwd Packet Length Max": 128,
-    "Flow Bytes/s": 24500,
-    "Flow Packets/s": 420.5,
-    "Average Packet Size": 74.2
-  }
-}
-
-// Response
-{
-  "prediction": 1,
-  "label": "ATTACK",
-  "probability": 0.984,
-  "model_version": "rf-20261024T183348Z",
-  "class_probabilities": { "0": 0.016, "1": 0.984 }
-}
-```
-
-### `POST /ml/training`
-Triggers background model retraining on `dataset/final_dataset.csv`.
-
----
-
-## 9. Reports
-
-### `POST /reports`
-Compiles current stored scan records, findings, and alerts into an executive report.
-
-### `GET /reports/{report_id}/json`
-Returns normalized JSON export.
-
-### `GET /reports/{report_id}/pdf`
-Downloads formatted PDF report.
-
----
-
-## 10. Settings & Allowlist
-
-### `GET /settings`
-Returns scanner/target identities, allowlist subnets, capture interfaces, and demo mode flag.
-
-### `PATCH /settings`
-Updates configurable settings keys.
-
-### `POST /settings/targets`
-Adds CIDR subnet to authorized target allowlist.
-```json
-{ "cidr": "192.168.56.0/24", "label": "Host-Only Target Subnet" }
-```
-
-### `DELETE /settings/targets/{target_id}`
-Removes subnet from allowlist.
-
-### `POST /settings/demo/seed`
-Populates isolated demo fixtures (`data_source='demo'`).
-
-### `DELETE /settings/demo/seed`
-Removes all demo fixtures.
+The model training/inference API is optional; the live telemetry pipeline skips classification when no usable model or sufficient flow features are available. Reports exclude legacy records tagged as demo and do not include credentials.

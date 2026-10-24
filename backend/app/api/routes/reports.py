@@ -19,7 +19,12 @@ def create_report(_: AuthDep, db: DbDep):
 
 @router.get("")
 def list_reports(_: AuthDep, db: DbDep):
-    rows = db.query(ReportRecord).order_by(ReportRecord.created_at.desc()).all()
+    rows = (
+        db.query(ReportRecord)
+        .filter(ReportRecord.data_source != "demo")
+        .order_by(ReportRecord.created_at.desc())
+        .all()
+    )
     return {
         "items": [
             {"id": r.id, "title": r.title, "created_at": r.created_at.isoformat(), "scope": r.scope}
@@ -30,7 +35,7 @@ def list_reports(_: AuthDep, db: DbDep):
 
 @router.get("/{report_id}/json")
 def json_report(_: AuthDep, db: DbDep, report_id: str):
-    rec = db.query(ReportRecord).filter_by(id=report_id).one_or_none()
+    rec = db.query(ReportRecord).filter(ReportRecord.id == report_id, ReportRecord.data_source != "demo").one_or_none()
     if not rec or not Path(rec.json_path).exists():
         raise AppError("Report not found", status_code=404, code="not_found")
     return FileResponse(rec.json_path, media_type="application/json")
@@ -38,7 +43,7 @@ def json_report(_: AuthDep, db: DbDep, report_id: str):
 
 @router.get("/{report_id}/pdf")
 def pdf_report(_: AuthDep, db: DbDep, report_id: str):
-    rec = db.query(ReportRecord).filter_by(id=report_id).one_or_none()
+    rec = db.query(ReportRecord).filter(ReportRecord.id == report_id, ReportRecord.data_source != "demo").one_or_none()
     if not rec or not rec.pdf_path or not Path(rec.pdf_path).exists():
         raise AppError("PDF not found", status_code=404, code="not_found")
     return FileResponse(rec.pdf_path, media_type="application/pdf")

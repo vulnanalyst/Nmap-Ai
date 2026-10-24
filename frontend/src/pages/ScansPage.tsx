@@ -166,7 +166,7 @@ export const ScansPage: React.FC = () => {
               {nmapStatus.guidance || 'Nmap is required for active scans. On Kali Linux it is pre-installed. On Debian/Ubuntu run: `sudo apt install nmap`.'}
             </p>
             <p className="text-amber-300/70 mt-1 font-mono text-[11px]">
-              Offline Nmap XML import, simulated demo mode, and flow ML classification remain fully operational without local Nmap.
+              Nmap XML imports remain available without a local Nmap installation. Flow classification runs only when a usable model and sufficient telemetry features are available.
             </p>
           </div>
         </div>

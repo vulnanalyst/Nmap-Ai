@@ -18,8 +18,10 @@ data/uploads/*
 !data/uploads/.gitkeep
 ml/artifacts/*.pkl
 ml/artifacts/*.joblib
+model/*.pkl
 .env
 *.log
+capture.pcapng
 .DS_Store
 backend/.pytest_cache/
 frontend/.vite/

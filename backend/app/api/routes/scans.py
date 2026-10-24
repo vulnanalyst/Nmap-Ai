@@ -11,6 +11,7 @@ from backend.app.services.nmap_parser import NmapParseError
 from backend.app.services.scan_service import cancel_scan, import_xml, nmap_status, preview_scan, start_scan
 
 router = APIRouter(prefix="/scans", tags=["scans"])
+MAX_XML_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 def _job(job: ScanJob) -> dict:
@@ -73,13 +74,13 @@ def create_scan(_: AuthDep, db: DbDep, body: ScanRequest):
 
 @router.get("")
 def list_scans(_: AuthDep, db: DbDep):
-    rows = db.query(ScanJob).order_by(ScanJob.created_at.desc()).all()
+    rows = db.query(ScanJob).filter(ScanJob.data_source != "demo").order_by(ScanJob.created_at.desc()).all()
     return {"items": [_job(j) for j in rows]}
 
 
 @router.get("/{scan_id}")
 def get_scan(_: AuthDep, db: DbDep, scan_id: str):
-    job = db.query(ScanJob).filter_by(id=scan_id).one_or_none()
+    job = db.query(ScanJob).filter(ScanJob.id == scan_id, ScanJob.data_source != "demo").one_or_none()
     if not job:
         raise AppError("Scan not found", status_code=404, code="not_found")
     return _job(job)
@@ -92,7 +93,7 @@ def cancel(_: AuthDep, db: DbDep, scan_id: str):
 
 @router.get("/{scan_id}/xml")
 def xml(_: AuthDep, db: DbDep, scan_id: str):
-    job = db.query(ScanJob).filter_by(id=scan_id).one_or_none()
+    job = db.query(ScanJob).filter(ScanJob.id == scan_id, ScanJob.data_source != "demo").one_or_none()
     if not job or not job.xml_path or not Path(job.xml_path).exists():
         raise AppError("XML artifact not found", status_code=404, code="not_found")
     return FileResponse(job.xml_path, media_type="application/xml", filename="scan.xml")
@@ -100,7 +101,7 @@ def xml(_: AuthDep, db: DbDep, scan_id: str):
 
 @router.get("/{scan_id}/json")
 def json_art(_: AuthDep, db: DbDep, scan_id: str):
-    job = db.query(ScanJob).filter_by(id=scan_id).one_or_none()
+    job = db.query(ScanJob).filter(ScanJob.id == scan_id, ScanJob.data_source != "demo").one_or_none()
     if not job or not job.json_path or not Path(job.json_path).exists():
         raise AppError("JSON artifact not found", status_code=404, code="not_found")
     return FileResponse(job.json_path, media_type="application/json", filename="scan.json")
@@ -108,7 +109,13 @@ def json_art(_: AuthDep, db: DbDep, scan_id: str):
 
 @router.post("/import")
 async def import_scan(_: AuthDep, db: DbDep, file: UploadFile = File(...)):
-    content = await file.read()
+    content = await file.read(MAX_XML_UPLOAD_BYTES + 1)
+    if len(content) > MAX_XML_UPLOAD_BYTES:
+        raise AppError(
+            f"Nmap XML upload exceeds the {MAX_XML_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+            status_code=413,
+            code="upload_too_large",
+        )
     try:
         job = import_xml(db, content, file.filename or "upload.xml", data_source="import")
     except NmapParseError as exc:

@@ -75,20 +75,28 @@ def persist_parsed_scan(db: Session, scan: ScanJob, parsed: dict, data_source: s
     db.flush()
 
 
-def list_hosts(db: Session, data_source: str | None = None) -> list[Host]:
-    q = db.query(Host).options(joinedload(Host.services)).order_by(Host.last_seen.desc())
-    if data_source:
-        q = q.filter(Host.data_source == data_source)
+def list_hosts(db: Session) -> list[Host]:
+    q = (
+        db.query(Host)
+        .filter(Host.data_source != "demo")
+        .options(joinedload(Host.services))
+        .order_by(Host.last_seen.desc())
+    )
     return q.all()
 
 
 def host_detail(db: Session, host_id: int) -> Host | None:
-    return db.query(Host).options(joinedload(Host.services)).filter(Host.id == host_id).one_or_none()
+    return (
+        db.query(Host)
+        .options(joinedload(Host.services))
+        .filter(Host.id == host_id, Host.data_source != "demo")
+        .one_or_none()
+    )
 
 
 def compare_scans(db: Session, left_id: str, right_id: str) -> dict:
-    left = db.query(ScanJob).filter_by(id=left_id).one_or_none()
-    right = db.query(ScanJob).filter_by(id=right_id).one_or_none()
+    left = db.query(ScanJob).filter(ScanJob.id == left_id, ScanJob.data_source != "demo").one_or_none()
+    right = db.query(ScanJob).filter(ScanJob.id == right_id, ScanJob.data_source != "demo").one_or_none()
     if not left or not right:
         return {"error": "One or both scans were not found"}
 
@@ -96,7 +104,7 @@ def compare_scans(db: Session, left_id: str, right_id: str) -> dict:
         rows = (
             db.query(Host.ip, Service.protocol, Service.port, Service.state)
             .join(Service, Service.host_id == Host.id)
-            .filter(Host.scan_id == scan_id)
+            .filter(Host.scan_id == scan_id, Host.data_source != "demo", Service.data_source != "demo")
             .all()
         )
         return {(ip, proto, port, state) for ip, proto, port, state in rows}

@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -11,13 +12,14 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import get_settings
-from backend.app.models import Alert, Finding, Host, ModelVersion, ReportRecord, ScanJob, Service
+from backend.app.models import Alert, Finding, Host, ModelVersion, ReportRecord, ScanJob, Service, Setting
 
 
 def build_report(db: Session) -> ReportRecord:
     settings = get_settings()
     now = datetime.now(timezone.utc)
     report_id = str(uuid.uuid4())
+    stored = {row.key: row.value for row in db.query(Setting).all()}
     hosts = db.query(Host).filter(Host.data_source != "demo").all()
     services = db.query(Service).filter(Service.data_source != "demo").all()
     findings = db.query(Finding).filter(Finding.data_source != "demo").all()
@@ -28,8 +30,14 @@ def build_report(db: Session) -> ReportRecord:
         "id": report_id,
         "generated_at": now.isoformat(),
         "title": "Nmap-AI Lab Security Report",
-        "scanner": {"name": settings.scanner_name or None, "ip": settings.scanner_ip or None},
-        "intended_target": {"name": settings.target_name or None, "ip": settings.target_ip or None},
+        "scanner": {
+            "name": stored.get("scanner_name", settings.scanner_name) or None,
+            "ip": stored.get("scanner_ip", settings.scanner_ip) or None,
+        },
+        "intended_target": {
+            "name": stored.get("target_name", settings.target_name) or None,
+            "ip": stored.get("target_ip", settings.target_ip) or None,
+        },
         "limitations": [
             "Only stored database records are included.",
             "Closed ports are not services. Open ports are not automatically vulnerabilities.",
@@ -117,8 +125,8 @@ def _write_pdf(path: Path, payload: dict) -> None:
     styles = getSampleStyleSheet()
     doc = SimpleDocTemplate(str(path), pagesize=letter)
     story = [
-        Paragraph(payload["title"], styles["Title"]),
-        Paragraph(f"Generated at {payload['generated_at']}", styles["Normal"]),
+        Paragraph(escape(payload["title"]), styles["Title"]),
+        Paragraph(f"Generated at {escape(payload['generated_at'])}", styles["Normal"]),
         Spacer(1, 12),
         Paragraph("Executive summary", styles["Heading2"]),
         Paragraph(
@@ -139,8 +147,10 @@ def _write_pdf(path: Path, payload: dict) -> None:
     for item in ranked:
         story.append(
             Paragraph(
-                f"{item['id']} {item['host_ip']} — {item['title']} "
-                f"[{item['validation_status']}] risk={item.get('risk_score')}",
+                escape(
+                    f"{item['id']} {item['host_ip']} — {item['title']} "
+                    f"[{item['validation_status']}] risk={item.get('risk_score')}"
+                ),
                 styles["Normal"],
             )
         )

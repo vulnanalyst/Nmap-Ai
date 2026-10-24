@@ -7,7 +7,6 @@ import {
   Trash2,
   Save,
   Radio,
-  Sparkles,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
@@ -17,7 +16,7 @@ import { ErrorBanner } from '../components/common/EmptyState';
 import type { SettingsData } from '../types';
 
 export const SettingsPage: React.FC = () => {
-  const { demoMode, setDemoMode, refreshSettings, showToast } = useApp();
+  const { refreshSettings, showToast } = useApp();
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -28,11 +27,6 @@ export const SettingsPage: React.FC = () => {
   const [scannerIp, setScannerIp] = useState<string>('');
   const [targetName, setTargetName] = useState<string>('');
   const [targetIp, setTargetIp] = useState<string>('');
-  const [captureInterface, setCaptureInterface] = useState<string>('');
-  const [nmapPath, setNmapPath] = useState<string>('');
-  const [timezone, setTimezone] = useState<string>('UTC');
-  const [logLevel, setLogLevel] = useState<string>('INFO');
-
   // New Target Form
   const [newCidr, setNewCidr] = useState<string>('');
   const [newCidrLabel, setNewCidrLabel] = useState<string>('');
@@ -48,10 +42,6 @@ export const SettingsPage: React.FC = () => {
       setScannerIp(data.scanner_ip || '');
       setTargetName(data.target_name || '');
       setTargetIp(data.target_ip || '');
-      setCaptureInterface(data.capture_interface || '');
-      setNmapPath(data.nmap?.path || '/usr/bin/nmap');
-      setTimezone(data.timezone || 'UTC');
-      setLogLevel(data.log_level || 'INFO');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to fetch settings');
     } finally {
@@ -73,14 +63,10 @@ export const SettingsPage: React.FC = () => {
         scanner_ip: scannerIp.trim(),
         target_name: targetName.trim(),
         target_ip: targetIp.trim(),
-        capture_interface: captureInterface.trim(),
-        nmap_path: nmapPath.trim(),
-        timezone: timezone.trim(),
-        log_level: logLevel.trim(),
       });
       await refreshSettings();
       showToast('Settings successfully updated', 'success');
-      fetchSettings();
+      await fetchSettings();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to save settings', 'error');
     } finally {
@@ -117,28 +103,6 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  // Seed Demo Data
-  const handleSeedDemo = async () => {
-    try {
-      const res = await api.seedDemoData();
-      showToast(res.message, 'success');
-      setDemoMode(true);
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to seed demo data', 'error');
-    }
-  };
-
-  // Clear Demo Data
-  const handleClearDemo = async () => {
-    try {
-      const res = await api.clearDemoData();
-      showToast(res.message, 'info');
-      setDemoMode(false);
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to clear demo data', 'error');
-    }
-  };
-
   if (loading && !settings) {
     return (
       <div className="space-y-4">
@@ -154,7 +118,7 @@ export const SettingsPage: React.FC = () => {
       <div>
         <h1 className="text-xl font-bold text-slate-100">Lab & System Configuration</h1>
         <p className="text-xs text-slate-400 mt-1">
-          Configure authorized scanner and target identities, CIDR allowlists, capture interfaces, and demo data fixtures.
+          Configure scanner and target labels, the authorized scan range, and inspect local scanner readiness.
         </p>
       </div>
 
@@ -163,8 +127,8 @@ export const SettingsPage: React.FC = () => {
       <form onSubmit={handleSaveSettings} className="space-y-6 text-xs">
         {/* Lab Machine Identities Card */}
         <Card
-          title="Authorized Lab Machine Identities"
-          subtitle="Configure explicit Kali scanner and Windows 10 victim labels. Target IPs are never assumed or hard-coded."
+          title="Scanner and Target Identities"
+          subtitle="Optional labels appear in topology and reports. Scan authorization is controlled separately by the CIDR allowlist."
           icon={<Terminal className="w-4 h-4" />}
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -172,7 +136,7 @@ export const SettingsPage: React.FC = () => {
             <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center gap-2 text-cyan-400 font-semibold">
                 <Terminal className="w-4 h-4" />
-                <span>Authorized Scanner (Kali Linux)</span>
+                <span>Scanner</span>
               </div>
               <div>
                 <label className="block text-slate-400 mb-1">Scanner Display Name</label>
@@ -180,7 +144,7 @@ export const SettingsPage: React.FC = () => {
                   type="text"
                   value={scannerName}
                   onChange={(e) => setScannerName(e.target.value)}
-                  placeholder="e.g. Kali-Attacker-Lab"
+                  placeholder="e.g. Lab scanner"
                   className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs focus:outline-hidden focus:border-cyan-500"
                 />
               </div>
@@ -200,7 +164,7 @@ export const SettingsPage: React.FC = () => {
             <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center gap-2 text-blue-400 font-semibold">
                 <Monitor className="w-4 h-4" />
-                <span>Authorized Target (Windows 10)</span>
+                <span>Target</span>
               </div>
               <div>
                 <label className="block text-slate-400 mb-1">Target Display Name</label>
@@ -208,7 +172,7 @@ export const SettingsPage: React.FC = () => {
                   type="text"
                   value={targetName}
                   onChange={(e) => setTargetName(e.target.value)}
-                  placeholder="e.g. Windows-10-Victim"
+                  placeholder="e.g. Test host"
                   className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs focus:outline-hidden focus:border-cyan-500"
                 />
               </div>
@@ -218,7 +182,7 @@ export const SettingsPage: React.FC = () => {
                   type="text"
                   value={targetIp}
                   onChange={(e) => setTargetIp(e.target.value)}
-                  placeholder="e.g. 192.168.1.50 (keep configurable)"
+                  placeholder="Optional; report context only"
                   className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-hidden focus:border-cyan-500"
                 />
               </div>
@@ -291,74 +255,27 @@ export const SettingsPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Network & Ingestion Parameters */}
+        {/* Scanner readiness */}
         <Card
-          title="Network Ingestion & Scanner Paths"
-          subtitle="System binary locations and socket telemetry configuration"
+          title="Local Scanner Readiness"
+          subtitle="Nmap executable is configured by the server operator with NMAP_AI_NMAP_PATH."
           icon={<Radio className="w-4 h-4" />}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-400 mb-1">Nmap Executable Path</label>
-              <input
-                type="text"
-                value={nmapPath}
-                onChange={(e) => setNmapPath(e.target.value)}
-                placeholder="/usr/bin/nmap"
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-hidden focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-400 mb-1">Capture Interface</label>
-              <input
-                type="text"
-                value={captureInterface}
-                onChange={(e) => setCaptureInterface(e.target.value)}
-                placeholder="eth0 or wlan0"
-                className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-hidden focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-400 mb-1">Telemetry Socket Port</label>
-              <input
-                type="text"
-                value={`${settings?.ingest_host}:${settings?.ingest_port}`}
-                disabled
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-500 font-mono text-xs"
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Demo Mode & Lab Simulation Fixtures */}
-        <Card
-          title="Simulated Lab Demo Fixtures"
-          subtitle="Load or purge realistic test lab evidence (tagged data_source='demo') without polluting real operational scans."
-          icon={<Sparkles className="w-4 h-4" />}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <span className="text-slate-200 font-medium">Demo Mode Switch:</span>
-              <p className="text-slate-400 text-[11px]">
-                Currently: <span className="font-mono text-cyan-300 font-bold">{demoMode ? 'ENABLED (Showing Demo Records)' : 'DISABLED (Strict Live Evidence)'}</span>
+              <label className="block text-slate-400 mb-1">Nmap</label>
+              <p className={settings?.nmap.installed ? 'text-emerald-400' : 'text-amber-400'}>
+                {settings?.nmap.installed ? settings.nmap.version : 'Not available'}
               </p>
+              <p className="mt-1 break-all font-mono text-slate-500">{settings?.nmap.path}</p>
+              {!settings?.nmap.installed && settings?.nmap.guidance && (
+                <p className="mt-2 text-slate-400">{settings.nmap.guidance}</p>
+              )}
             </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleSeedDemo}
-                className="px-3.5 py-1.5 bg-cyan-950 border border-cyan-800 hover:bg-cyan-900 text-cyan-300 text-xs font-medium rounded transition-colors"
-              >
-                Seed Demo Lab Data
-              </button>
-              <button
-                type="button"
-                onClick={handleClearDemo}
-                className="px-3.5 py-1.5 bg-red-950 border border-red-800 hover:bg-red-900 text-red-300 text-xs font-medium rounded transition-colors"
-              >
-                Clear Demo Data
-              </button>
+            <div>
+              <label className="block text-slate-400 mb-1">Telemetry listener</label>
+              <p className="font-mono text-slate-300">{settings?.ingest_host}:{settings?.ingest_port}</p>
+              <p className="mt-1 text-slate-500">Requires an authorized external capture source.</p>
             </div>
           </div>
         </Card>

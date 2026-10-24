@@ -1,5 +1,6 @@
 import json
 
+import joblib
 import pytest
 
 from ml.inference.predict import FeatureSchemaError, predict, validate_features
@@ -18,13 +19,17 @@ def test_reordered_dict_keeps_schema_order():
     assert arr.shape == (1, 10)
 
 
-def test_training_and_inference_use_real_metrics(tmp_path):
+def test_training_and_inference_use_real_metrics(tmp_path, monkeypatch):
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+    monkeypatch.setattr("ml.training.train.artifacts_dir", lambda: artifact_dir)
     result = train(compare_gbdt=False)
     assert result["metrics"]["random_forest"]["f1_macro"] >= 0
     assert "classification_report" in result["metrics"]["random_forest"]
     sample = {name: 1.0 for name in FEATURE_NAMES}
     sample["Destination Port"] = 80
-    out = predict(sample)
+    model = joblib.load(result["model_path"])
+    out = predict(sample, model=model, schema=result)
     assert out["predicted_class"] in (0, 1)
     assert out["class_probabilities"]
     # class index 1 is not assumed blindly

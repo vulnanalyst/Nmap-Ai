@@ -28,10 +28,9 @@ def status(_: AuthDep, db: DbDep):
 
 
 @router.get("/events")
-def events(_: AuthDep, db: DbDep, include_demo: bool = False):
+def events(_: AuthDep, db: DbDep):
     q = db.query(TrafficEvent)
-    if not include_demo:
-        q = q.filter(TrafficEvent.data_source != "demo")
+    q = q.filter(TrafficEvent.data_source != "demo")
     rows = q.order_by(TrafficEvent.timestamp.desc()).limit(200).all()
     return {
         "items": [

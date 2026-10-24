@@ -6,9 +6,8 @@ import {
   GitCompare,
 } from 'lucide-react';
 import { api } from '../services/api';
-import { useApp } from '../context/AppContext';
 import { Card } from '../components/common/Card';
-import { StateBadge, DataSourceBadge } from '../components/common/Badge';
+import { DataSourceBadge, StateBadge } from '../components/common/Badge';
 import { Drawer } from '../components/common/Drawer';
 import { Modal } from '../components/common/Modal';
 import { LoadingSkeleton } from '../components/common/LoadingState';
@@ -16,7 +15,6 @@ import { EmptyState, ErrorBanner } from '../components/common/EmptyState';
 import type { HostItem, TopologyData, ScanJobItem } from '../types';
 
 export const TopologyPage: React.FC = () => {
-  const { demoMode } = useApp();
   const [hosts, setHosts] = useState<HostItem[]>([]);
   const [topology, setTopology] = useState<TopologyData | null>(null);
   const [scans, setScans] = useState<ScanJobItem[]>([]);
@@ -36,8 +34,8 @@ export const TopologyPage: React.FC = () => {
       setLoading(true);
       setError(null);
       const [hostsRes, topoRes, scansRes] = await Promise.all([
-        api.getHosts(demoMode),
-        api.getTopology(demoMode),
+        api.getHosts(),
+        api.getTopology(),
         api.getScans(),
       ]);
       setHosts(hostsRes.items);
@@ -48,7 +46,7 @@ export const TopologyPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [demoMode]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -73,8 +71,7 @@ export const TopologyPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold text-slate-100">Network Discovery & Topology</h1>
-            <DataSourceBadge source={demoMode ? 'demo' : 'live'} />
+            <h1 className="text-xl font-bold text-slate-100">Network Discovery</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Verified network inventory with strict edge provenance. Edges reflect actual scan relationships.

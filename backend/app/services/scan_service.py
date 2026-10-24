@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import threading
@@ -28,6 +29,10 @@ PROFILES: dict[str, list[str]] = {
 }
 
 Runner = Callable[[list[str], Path, int], tuple[int, str, str]]
+_RUNNING_PROCESSES: dict[str, subprocess.Popen] = {}
+_CANCELLED_SCANS: set[str] = set()
+_PROCESS_LOCK = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 def nmap_status() -> dict:
@@ -134,26 +139,42 @@ def _run_job(scan_id: str, runner: Runner | None) -> None:
     db = get_session_factory()()
     try:
         job = db.query(ScanJob).filter_by(id=scan_id).one()
+        if job.status == "cancelled":
+            return
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)
         db.commit()
         settings = get_settings()
         xml_path = Path(job.xml_path)
         try:
-            code, stdout, stderr = (runner or _default_runner)(job.argv, xml_path, settings.scan_timeout_seconds)
+            if runner is None:
+                code, stdout, stderr = _run_nmap_process(
+                    scan_id, job.argv, xml_path, settings.scan_timeout_seconds
+                )
+            else:
+                code, stdout, stderr = runner(job.argv, xml_path, settings.scan_timeout_seconds)
         except subprocess.TimeoutExpired:
+            db.refresh(job)
+            if job.status == "cancelled":
+                return
             job.status = "timeout"
             job.error = f"Scan exceeded {settings.scan_timeout_seconds}s"
             job.finished_at = datetime.now(timezone.utc)
             db.commit()
             return
         except Exception as exc:  # noqa: BLE001 — persist actual runner failure
+            db.refresh(job)
+            if job.status == "cancelled":
+                return
             job.status = "error"
             job.error = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             db.commit()
             return
 
+        db.refresh(job)
+        if job.status == "cancelled":
+            return
         job.finished_at = datetime.now(timezone.utc)
         if job.started_at:
             job.duration_seconds = (job.finished_at - job.started_at).total_seconds()
@@ -178,25 +199,42 @@ def _run_job(scan_id: str, runner: Runner | None) -> None:
 
             asyncio.run(event_bus.publish({"type": "scan.completed", "scan_id": job.id}))
         except Exception:
-            pass
+            logger.exception("Scan completed but completion event publication failed")
     finally:
+        with _PROCESS_LOCK:
+            _RUNNING_PROCESSES.pop(scan_id, None)
+            _CANCELLED_SCANS.discard(scan_id)
         db.close()
 
 
-def _default_runner(argv: list[str], xml_path: Path, timeout: int) -> tuple[int, str, str]:
-    proc = subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-        cwd=str(xml_path.parent),
-    )
-    return proc.returncode, proc.stdout, proc.stderr
+def _run_nmap_process(
+    scan_id: str, argv: list[str], xml_path: Path, timeout: int
+) -> tuple[int, str, str]:
+    with _PROCESS_LOCK:
+        if scan_id in _CANCELLED_SCANS:
+            return -1, "", ""
+        process = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(xml_path.parent),
+        )
+        _RUNNING_PROCESSES[scan_id] = process
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise
+    finally:
+        with _PROCESS_LOCK:
+            _RUNNING_PROCESSES.pop(scan_id, None)
+    return process.returncode, stdout, stderr
 
 
 def cancel_scan(db: Session, scan_id: str) -> ScanJob:
-    job = db.query(ScanJob).filter_by(id=scan_id).one_or_none()
+    job = db.query(ScanJob).filter(ScanJob.id == scan_id, ScanJob.data_source != "demo").one_or_none()
     if not job:
         raise AppError("Scan not found", status_code=404, code="not_found")
     if job.status in {"completed", "error", "timeout", "cancelled", "dry_run"}:
@@ -205,6 +243,14 @@ def cancel_scan(db: Session, scan_id: str) -> ScanJob:
     job.error = "Cancelled by operator"
     job.finished_at = datetime.now(timezone.utc)
     db.commit()
+    with _PROCESS_LOCK:
+        _CANCELLED_SCANS.add(scan_id)
+        process = _RUNNING_PROCESSES.get(scan_id)
+    if process is not None and process.poll() is None:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
     return job
 
 

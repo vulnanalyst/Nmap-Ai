@@ -1,133 +1,34 @@
-# Lab Setup Guide — Kali Linux & Windows 10 Target
+# Authorized lab setup
 
-This guide details how to build an authorized cybersecurity testing lab to run live scans, capture network traffic, and evaluate the Nmap-AI Security Intelligence Platform.
+Use a private, isolated virtual network for active scans. Do not use an address or subnet from an example as a target; configure only the addresses and ranges you personally own or are explicitly authorized to assess.
 
----
+## Configure the application
 
-## 1. Lab Architecture & Network Topology
+Follow the installation steps in the root README. Before starting the API:
 
-```text
-+------------------------------+             +------------------------------+
-|     Kali Linux (Scanner)     |             |    Windows 10 Lab Target     |
-|  - Nmap Scanner              |             |  - SMB Service (Port 445)    |
-|  - Nmap-AI Backend & UI      |  Host-Only  |  - RDP Service (Port 3389)   |
-|  - ML Inference Engine       |<----------->|  - Local Lab Services        |
-|  IP: [Configurable]          |   Network   |  IP: [Configurable]          |
-|  e.g., 192.168.56.10/24      |             |  e.g., 192.168.56.20/24      |
-+------------------------------+             +------------------------------+
-```
+1. Copy `.env.example` to `.env`.
+2. Set unique `NMAP_AI_API_TOKEN` and `NMAP_AI_PASSWORD` values.
+3. Keep `NMAP_AI_HOST` and `NMAP_AI_INGEST_HOST` bound to loopback unless network access is required and separately controlled.
+4. Install Nmap on the backend host if active scanning is needed. Set `NMAP_AI_NMAP_PATH` to its executable path if it is not on `PATH`.
 
-> [!IMPORTANT]
-> **Safety Notice**: This lab must be operated exclusively in an isolated virtual network (Host-Only or Internal Network in VirtualBox/VMware/Proxmox). Never scan public or unauthorized IP addresses.
+Sign in to the UI with `NMAP_AI_USERNAME` and `NMAP_AI_PASSWORD`. In **Settings**, add only the lab CIDR(s) authorized for scanning. The application does not infer a target or scan automatically.
 
----
+## Scan or import evidence
 
-## 2. Windows 10 Target Configuration
+Select a profile in **Scan Management**, inspect the argument preview, enter the target and re-enter it for confirmation, and explicitly confirm authorization before starting. The target must be inside a configured allowlist network. Import an existing Nmap XML file instead when active scanning is not appropriate; imported XML is limited to 20 MiB.
 
-### A. Network Setup
-1. Configure the network adapter to **Host-Only** or **Internal Network**.
-2. Set a static IP or observe assigned DHCP IP (e.g., `192.168.56.20`).
-3. Verify connectivity by pinging between Kali and Windows.
+Available scan profiles:
 
-### B. Enable Target Services for Scanning
-1. **Enable SMBv2/v3**:
-   - Open PowerShell as Administrator:
-     ```powershell
-     Set-SmbServerConfiguration -EnableSMB2Protocol $true -Force
-     ```
-2. **Enable Remote Desktop (RDP)**:
-   - In Windows Settings -> **System** -> **Remote Desktop** -> Toggle **Enable Remote Desktop**.
-3. **Firewall Rules for Testing**:
-   - In PowerShell (Administrator), allow incoming TCP on ports 445 and 3389 from the lab subnet:
-     ```powershell
-     New-NetFirewallRule -DisplayName "Lab-SMB-In" -Direction Inbound -Protocol TCP -LocalPort 445 -Action Allow
-     New-NetFirewallRule -DisplayName "Lab-RDP-In" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
-     ```
+- Host discovery (`-sn`)
+- TCP connect (`-sT`)
+- Service/version detection (`-sT -sV`)
+- OS guess (`-sT -O`)
+- Nmap scripts in the `safe` category (`-sT -sV --script safe`)
 
----
+Nmap behavior can still affect a target, including the `safe` script profile. Confirm scope and permission with the target owner before use.
 
-## 3. Kali Linux Scanner & Platform Configuration
+## Optional telemetry
 
-### A. Install Dependencies
-```bash
-# Update package lists and install Nmap
-sudo apt update
-sudo apt install -y nmap libpcap-dev
+The API accepts normalized packet events at `/api/v1/traffic/ingest`. The optional `capture/live_monitor.py` process is a TCP receiver for length-prefixed Ethernet frames; it does not capture an interface itself. A separate, authorized capture source must connect and supply frames. Scapy is needed to decode Ethernet/IP/TCP/UDP frames. Keep the listener on loopback unless remote input is explicitly required and restricted.
 
-# Verify Nmap installation
-nmap -V
-```
-
-### B. Configure Platform Allowlist
-1. Start the Nmap-AI backend:
-   ```bash
-   python3 main.py
-   ```
-2. Navigate to `http://localhost:5173/settings`.
-3. Under **Authorized Lab Machine Identities**:
-   - Set **Scanner Display Name**: `Kali Linux Lab`
-   - Set **Scanner Interface IP**: (e.g. `192.168.56.10`)
-   - Set **Target Display Name**: `Windows 10 Victim`
-   - Set **Target Host IP**: (e.g. `192.168.56.20`)
-4. Under **Authorized Target CIDR Allowlist**:
-   - Add your lab subnet (e.g. `192.168.56.0/24`).
-
----
-
-## 4. Running Authorized Scans
-
-### Profile 1: Host Discovery
-```bash
-# Checks reachability without port probing
-nmap -sn 192.168.56.20 -oX data/scans/discovery.xml
-```
-
-### Profile 2: Service Version Detection
-```bash
-# Full version detection with structured output
-nmap -sT -sV -p 1-1024,3389 192.168.56.20 -oX data/scans/services.xml
-```
-
-### Profile 3: Cautious Non-Destructive Script Checks
-```bash
-# Evaluates SMB signing and RDP security without disruption
-nmap -sT -sV --script smb2-security-mode,rdp-ntlm-info -p 445,3389 192.168.56.20 -oX data/scans/checks.xml
-```
-
-You can execute these directly within the **Scan Management** page or import the resulting `.xml` files via the upload button.
-
----
-
-## 5. Live Telemetry & Traffic Ingestion
-
-To monitor live packet flows between Kali and Windows:
-
-```bash
-# Start the telemetry listener on port 9999
-python3 capture/live_monitor.py
-```
-
-### Streaming Telemetry from Windows or Remote Probe:
-If sending telemetry over TCP:
-```python
-import socket, struct
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(("192.168.56.10", 9999))
-
-# Send length-prefixed raw ethernet frame
-frame_bytes = b"..." # raw captured ethernet bytes
-header = struct.pack("!I", len(frame_bytes))
-sock.sendall(header + frame_bytes)
-```
-
----
-
-## 6. Troubleshooting
-
-| Symptom | Cause | Solution |
-|---------|-------|----------|
-| `Target is down / 0 hosts up` | Windows Firewall dropping ICMP echo requests | Use `-Pn` flag or allow ICMP echo in Windows Firewall. |
-| `Scan rejected: Unauthorized target` | Target IP is not in the allowlist | Add the subnet in `Lab Settings -> Authorized Targets`. |
-| `Nmap executable not found` | Nmap is not installed or not in PATH | Run `sudo apt install nmap` or configure `NMAP_AI_NMAP_PATH` in `.env`. |
-| `Permission denied for Scapy sniffing` | Raw socket capture requires root/admin | Run capture script with `sudo` or configure Linux capability: `sudo setcap cap_net_raw,cap_net_admin=eip $(which python3)`. |
+Telemetry classification is optional. The flow must contain enough packets to calculate the model's required feature schema, and a compatible model artifact must be present. Otherwise the event retains a skipped status rather than a synthetic prediction.

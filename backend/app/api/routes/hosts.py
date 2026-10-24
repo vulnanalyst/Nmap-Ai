@@ -9,12 +9,10 @@ router = APIRouter(tags=["hosts"])
 
 
 @router.get("/hosts")
-def hosts(_: AuthDep, db: DbDep, include_demo: bool = False):
-    rows = list_hosts(db, data_source=None if include_demo else None)
+def hosts(_: AuthDep, db: DbDep):
+    rows = list_hosts(db)
     out = []
     for host in rows:
-        if not include_demo and host.data_source == "demo":
-            continue
         out.append(
             {
                 "id": host.id,
@@ -51,7 +49,10 @@ def host(_: AuthDep, db: DbDep, host_id: int):
     row = host_detail(db, host_id)
     if not row:
         raise AppError("Host not found", status_code=404, code="not_found")
-    findings = db.query(Finding).filter_by(host_ip=row.ip).all()
+    findings = db.query(Finding).filter(
+        Finding.host_ip == row.ip,
+        Finding.data_source != "demo",
+    ).all()
     return {
         "id": row.id,
         "ip": row.ip,
@@ -78,26 +79,28 @@ def host(_: AuthDep, db: DbDep, host_id: int):
 
 
 @router.get("/topology")
-def topology(_: AuthDep, db: DbDep, include_demo: bool = False):
+def topology(_: AuthDep, db: DbDep):
     from backend.app.core.config import get_settings
-    from backend.app.models import Host
+    from backend.app.models import Host, Setting
 
     settings = get_settings()
+    stored = {row.key: row.value for row in db.query(Setting).all()}
+    scanner_name = stored.get("scanner_name", settings.scanner_name)
+    scanner_ip = stored.get("scanner_ip", settings.scanner_ip)
     nodes = []
     edges = []
-    if settings.scanner_ip or settings.scanner_name:
+    if scanner_ip or scanner_name:
         nodes.append(
             {
                 "id": "scanner",
-                "label": settings.scanner_name or settings.scanner_ip,
+                "label": scanner_name or scanner_ip,
                 "role": "scanner",
-                "ip": settings.scanner_ip or None,
+                "ip": scanner_ip or None,
                 "provenance": "configured_scanner_identity",
             }
         )
     q = db.query(Host)
-    if not include_demo:
-        q = q.filter(Host.data_source != "demo")
+    q = q.filter(Host.data_source != "demo")
     for host in q.all():
         nodes.append(
             {
@@ -111,7 +114,7 @@ def topology(_: AuthDep, db: DbDep, include_demo: bool = False):
                 "data_source": host.data_source,
             }
         )
-        if settings.scanner_ip or settings.scanner_name:
+        if scanner_ip or scanner_name:
             edges.append(
                 {
                     "from": "scanner",

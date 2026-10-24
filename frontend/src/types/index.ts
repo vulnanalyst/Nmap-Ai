@@ -55,7 +55,7 @@ export interface ScanJobItem {
   id: string;
   profile: string;
   targets: string;
-  status: 'queued' | 'running' | 'completed' | 'error' | 'timeout' | 'dry_run' | 'preview';
+  status: 'queued' | 'running' | 'completed' | 'error' | 'timeout' | 'cancelled' | 'dry_run' | 'preview';
   argv: string[];
   dry_run: boolean;
   progress_pct: number;
@@ -177,11 +177,6 @@ export interface IngestionStatusItem {
   guidance: string;
 }
 
-export interface FeatureImportanceItem {
-  feature: string;
-  importance: number;
-}
-
 export interface ClassMetrics {
   precision: number;
   recall: number;
@@ -198,47 +193,6 @@ export interface AlgorithmEvaluation {
   confusion_matrix: number[][];
   labels: number[];
   classification_report: Record<string, ClassMetrics>;
-}
-
-export interface ModelArtifact {
-  version: string;
-  model_type: string;
-  algorithm: string;
-  feature_names: string[];
-  classes: number[];
-  class_names: Record<string, string>;
-  dataset_source: string;
-  trained_at: string;
-  sklearn_note: string;
-  metrics: {
-    random_forest: AlgorithmEvaluation;
-    gradient_boosting?: AlgorithmEvaluation | null;
-    selected: string;
-    feature_importance: FeatureImportanceItem[];
-    train_rows: number;
-    test_rows: number;
-  };
-}
-
-export interface MLModelResponse {
-  active?: ModelArtifact | null;
-  disclaimer: string;
-  history: Array<{
-    version: string;
-    trained_at: string;
-    is_active: boolean;
-    metrics: Record<string, unknown>;
-  }>;
-}
-
-export interface TrainingRunItem {
-  id: string;
-  status: 'queued' | 'running' | 'completed' | 'error';
-  error?: string | null;
-  metrics?: Record<string, unknown>;
-  model_version?: string | null;
-  started_at?: string | null;
-  finished_at?: string | null;
 }
 
 export interface ReportItem {
@@ -261,7 +215,6 @@ export interface SettingsData {
   target_ip?: string | null;
   authorized_targets: AuthorizedTargetItem[];
   authorized_cidrs: string[];
-  capture_interface?: string | null;
   ingest_host: string;
   ingest_port: number;
   nmap: {
@@ -270,11 +223,6 @@ export interface SettingsData {
     version?: string | null;
     guidance?: string;
   };
-  nvd_api_key_configured: boolean;
-  database_url: string;
-  demo_mode: boolean;
-  timezone: string;
-  log_level: string;
   model?: {
     version?: string | null;
     trained_at?: string | null;

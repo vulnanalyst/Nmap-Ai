@@ -40,7 +40,7 @@ export const ReportsPage: React.FC = () => {
     try {
       setGenerating(true);
       const rec = await api.createReport();
-      showToast(`Security Report compiled [ID: ${rec.id.slice(0, 8)}]`, 'success');
+      showToast(`Report generated [ID: ${rec.id.slice(0, 8)}]`, 'success');
       fetchReports();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Report generation failed', 'error');
@@ -49,14 +49,22 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
+  const handleDownload = async (reportId: string, format: 'json' | 'pdf') => {
+    try {
+      await api.downloadReport(reportId, format);
+    } catch (downloadError) {
+      showToast(downloadError instanceof Error ? downloadError.message : `Unable to download ${format.toUpperCase()}`, 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-100">Evidence Reports & Compliance Export</h1>
+          <h1 className="text-xl font-bold text-slate-100">Reports</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Audit-ready security intelligence summaries containing discovered hosts, validated vulnerabilities, ML detections, and explicit limitations.
+            Generate and download reports from stored scan evidence and findings.
           </p>
         </div>
 
@@ -74,8 +82,8 @@ export const ReportsPage: React.FC = () => {
 
       {/* Reports List */}
       <Card
-        title={`Stored Executive Reports (${reports.length})`}
-        subtitle="Immutable audit documents generated from database records"
+        title={`Stored Reports (${reports.length})`}
+        subtitle="Generated from stored scan, finding, and alert evidence"
         icon={<FileText className="w-4 h-4" />}
       >
         {loading && reports.length === 0 ? (
@@ -84,7 +92,7 @@ export const ReportsPage: React.FC = () => {
           <EmptyState
             icon={<FileText className="w-8 h-8 text-cyan-400" />}
             title="No Reports Generated Yet"
-            description="Click 'Generate New Report' above to synthesize current database scan results, findings, and alerts into signed PDF and JSON exports."
+            description="Generate a report from stored scan records, findings, and alerts."
           />
         ) : (
           <div className="space-y-3">
@@ -108,27 +116,21 @@ export const ReportsPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-center">
-                  {/* Download JSON */}
-                  <a
-                    href={api.getReportJsonUrl(report.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium inline-flex items-center gap-1.5 transition-colors border border-slate-700"
+                  <button
+                    onClick={() => handleDownload(report.id, 'json')}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium inline-flex items-center gap-1.5 border border-slate-700"
                   >
                     <FileCode className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Download JSON</span>
-                  </a>
+                  </button>
 
-                  {/* Download PDF */}
-                  <a
-                    href={api.getReportPdfUrl(report.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-900 rounded text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm"
+                  <button
+                    onClick={() => handleDownload(report.id, 'pdf')}
+                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-xs font-semibold inline-flex items-center gap-1.5"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Download PDF</span>
-                  </a>
+                  </button>
                 </div>
               </div>
             ))}

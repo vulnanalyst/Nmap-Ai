@@ -59,6 +59,10 @@ def test_report_uses_stored_records(client, auth_headers):
     assert pdf.status_code == 200
     assert pdf.headers["content-type"].startswith("application/pdf")
 
+    readiness = client.get("/api/v1/ready")
+    assert readiness.status_code == 200
+    assert "sqlite:///" not in readiness.text
+
 
 def test_dashboard_matches_db(client, auth_headers):
     empty = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()

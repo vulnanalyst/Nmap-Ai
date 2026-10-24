@@ -16,15 +16,13 @@ def health():
 @router.get("/ready")
 def ready():
     settings = get_settings()
-    db_ok = True
     try:
         get_engine().connect().close()
-    except Exception as exc:  # noqa: BLE001
-        db_ok = False
-        return {"status": "degraded", "database": str(exc), "nmap": nmap_status()}
+    except Exception:  # noqa: BLE001
+        return {"status": "degraded", "database": "unavailable", "nmap": nmap_status()}
     return {
-        "status": "ready" if db_ok else "degraded",
-        "database": settings.sqlite_url,
+        "status": "ready",
+        "database": "available",
         "bind": f"{settings.host}:{settings.port}",
         "nmap": nmap_status(),
     }

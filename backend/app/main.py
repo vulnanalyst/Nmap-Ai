@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Nmap-AI Security Intelligence Platform",
         version="1.0.0",
-        description="Evidence-based lab security intelligence. Live mode never mixes demo fixtures into stored results.",
+        description="Evidence-based network discovery, authorized Nmap scanning, vulnerability analysis, and telemetry.",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -38,4 +38,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

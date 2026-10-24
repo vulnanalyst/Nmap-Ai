@@ -21,7 +21,7 @@ import { EmptyState, ErrorBanner } from '../components/common/EmptyState';
 import type { FindingItem, WorkflowStatus } from '../types';
 
 export const VulnerabilitiesPage: React.FC = () => {
-  const { demoMode, showToast } = useApp();
+  const { showToast } = useApp();
   const [findings, setFindings] = useState<FindingItem[]>([]);
   const [selectedFinding, setSelectedFinding] = useState<FindingItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -42,7 +42,6 @@ export const VulnerabilitiesPage: React.FC = () => {
         validation_status: selectedValidation || undefined,
         q: searchQuery.trim() || undefined,
         cve: selectedCve.trim() || undefined,
-        include_demo: demoMode,
       });
       setFindings(res.items);
     } catch (err: unknown) {
@@ -50,7 +49,7 @@ export const VulnerabilitiesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedSeverity, selectedValidation, searchQuery, selectedCve, demoMode]);
+  }, [selectedSeverity, selectedValidation, searchQuery, selectedCve]);
 
   useEffect(() => {
     fetchFindings();
@@ -86,8 +85,7 @@ export const VulnerabilitiesPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold text-slate-100">Vulnerability Intelligence</h1>
-            <DataSourceBadge source={demoMode ? 'demo' : 'live'} />
+            <h1 className="text-xl font-bold text-slate-100">Vulnerability Findings</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Correlated vulnerability findings with explicit validation boundaries, CVE mappings, and evidence provenance.

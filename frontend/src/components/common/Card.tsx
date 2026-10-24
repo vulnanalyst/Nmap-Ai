@@ -22,7 +22,7 @@ export const Card: React.FC<CardProps> = ({
   const hasHeader = title || subtitle || icon || action;
 
   return (
-    <div className={`bg-[#111827] border border-slate-800 rounded-lg shadow-lg overflow-hidden ${className}`}>
+    <div className={`bg-slate-900 border border-slate-800 rounded overflow-hidden ${className}`}>
       {hasHeader && (
         <div className={`px-5 py-4 border-b border-slate-800/80 flex items-center justify-between gap-4 ${headerClassName}`}>
           <div className="flex items-center gap-3">
