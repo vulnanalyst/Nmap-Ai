@@ -6,6 +6,14 @@ from backend.app.services.traffic_ingestion import decode_length_prefixed
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_nmap.xml"
 
 
+def allow_target(client, auth_headers):
+    return client.post(
+        "/api/v1/settings/targets",
+        headers=auth_headers,
+        json={"cidr": "192.0.2.10/32", "label": "test lab"},
+    )
+
+
 def test_single_packet_skips_ml(client, auth_headers):
     res = client.post(
         "/api/v1/traffic/ingest",
@@ -49,6 +57,7 @@ def test_ml_infer_rejects_short_vector(client, auth_headers):
 
 
 def test_report_uses_stored_records(client, auth_headers):
+    allow_target(client, auth_headers)
     with FIXTURE.open("rb") as handle:
         client.post("/api/v1/scans/import", headers=auth_headers, files={"file": ("sample.xml", handle, "application/xml")})
     created = client.post("/api/v1/reports", headers=auth_headers).json()
@@ -67,6 +76,7 @@ def test_report_uses_stored_records(client, auth_headers):
 def test_dashboard_matches_db(client, auth_headers):
     empty = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()
     assert empty["hosts_total"] == 0
+    allow_target(client, auth_headers)
     with FIXTURE.open("rb") as handle:
         client.post("/api/v1/scans/import", headers=auth_headers, files={"file": ("sample.xml", handle, "application/xml")})
     summary = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()
@@ -80,4 +90,11 @@ def test_login(client):
     assert bad.status_code == 401
     ok = client.post("/api/v1/auth/login", json={"username": "lab", "password": "labpass"})
     assert ok.status_code == 200
-    assert ok.json()["token"] == "test-token"
+    token = ok.json()["token"]
+    assert token
+    protected = client.get("/api/v1/dashboard/summary", headers={"X-API-Key": token})
+    assert protected.status_code == 200
+    logout_res = client.post("/api/v1/auth/logout", headers={"X-API-Key": token})
+    assert logout_res.status_code == 200
+    after_logout = client.get("/api/v1/dashboard/summary", headers={"X-API-Key": token})
+    assert after_logout.status_code == 401

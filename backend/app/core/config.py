@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     api_token: str = "changeme-local-only"
     username: str = "lab"
     password: str = "changeme"
+    password_hash: str = ""
     database_url: str = ""
     nmap_path: str = "nmap"
     scan_timeout_seconds: int = 600

@@ -27,6 +27,27 @@ class AuthorizedTarget(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class DatasetTarget(Base):
+    __tablename__ = "dataset_targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    source_name: Mapped[str] = mapped_column(String(256), default="targets.csv")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    scan_links: Mapped[list["ScanDatasetLink"]] = relationship(back_populates="target")
+
+
+class ScanDatasetLink(Base):
+    __tablename__ = "scan_dataset_links"
+
+    scan_id: Mapped[str] = mapped_column(ForeignKey("scan_jobs.id"), primary_key=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("dataset_targets.id"), primary_key=True)
+
+    scan: Mapped["ScanJob"] = relationship(back_populates="dataset_links")
+    target: Mapped[DatasetTarget] = relationship(back_populates="scan_links")
+
+
 class ScanJob(Base):
     __tablename__ = "scan_jobs"
 
@@ -54,6 +75,24 @@ class ScanJob(Base):
     ports_filtered: Mapped[int] = mapped_column(Integer, default=0)
 
     hosts: Mapped[list["Host"]] = relationship(back_populates="scan")
+    dataset_links: Mapped[list[ScanDatasetLink]] = relationship(
+        back_populates="scan", cascade="all, delete-orphan"
+    )
+    import_record: Mapped["ScanImport | None"] = relationship(
+        back_populates="scan", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class ScanImport(Base):
+    __tablename__ = "scan_imports"
+
+    digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    scan_id: Mapped[str] = mapped_column(ForeignKey("scan_jobs.id"), unique=True, nullable=False)
+    scanner_args: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    scan: Mapped[ScanJob] = relationship(back_populates="import_record")
 
 
 class Host(Base):

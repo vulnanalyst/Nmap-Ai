@@ -15,8 +15,6 @@ export function OverviewPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const [summaryResponse, hostsResponse, findingsResponse, scansResponse] = await Promise.all([
         api.getDashboardSummary(),
@@ -24,6 +22,7 @@ export function OverviewPage() {
         api.getFindings(),
         api.getScans(),
       ]);
+      setError(null);
       setSummary(summaryResponse);
       setHosts(hostsResponse.items.slice(0, 8));
       setFindings(findingsResponse.items.slice(0, 8));
@@ -36,7 +35,12 @@ export function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    loadDashboard();
+    const initialLoad = window.setTimeout(() => void loadDashboard(), 0);
+    const interval = window.setInterval(() => void loadDashboard(), 5000);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.clearInterval(interval);
+    };
   }, [loadDashboard]);
 
   if (loading && !summary) return <p className="text-sm text-slate-400">Loading dashboard…</p>;
@@ -125,13 +129,13 @@ export function OverviewPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="text-xs text-slate-400">
-                <tr><th className="py-2 pr-4">Target</th><th className="py-2 pr-4">Profile</th><th className="py-2 pr-4">Status</th><th className="py-2">Started</th></tr>
+                <tr><th className="py-2 pr-4">Target</th><th className="py-2 pr-4">Profile / source</th><th className="py-2 pr-4">Status</th><th className="py-2">Started</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {scans.map((scan) => (
                   <tr key={scan.id}>
                     <td className="py-2 pr-4 font-mono text-slate-200">{scan.targets}</td>
-                    <td className="py-2 pr-4 text-slate-300">{scan.profile}</td>
+                    <td className="py-2 pr-4 text-slate-300">{scan.profile} · {scan.scan_source || scan.data_source}</td>
                     <td className="py-2 pr-4 text-slate-300">{scan.status}{scan.error ? ` — ${scan.error}` : ''}</td>
                     <td className="py-2 text-slate-400">{scan.created_at ? new Date(scan.created_at).toLocaleString() : '—'}</td>
                   </tr>

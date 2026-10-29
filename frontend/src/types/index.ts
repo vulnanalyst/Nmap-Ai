@@ -73,6 +73,31 @@ export interface ScanJobItem {
   hosts_up: number;
   hosts_down: number;
   nmap_version?: string | null;
+  scan_source?: string;
+  scanner_args?: string | null;
+  source_name?: string | null;
+  dataset_targets?: DatasetTargetItem[];
+  duplicate?: boolean;
+  hosts?: Array<{
+    ip: string;
+    state: string;
+    hostname?: string | null;
+    services: Array<{
+      protocol: string;
+      port: number;
+      state: string;
+      name?: string | null;
+      product?: string | null;
+      version?: string | null;
+    }>;
+  }>;
+}
+
+export interface DatasetTargetItem {
+  id: number;
+  ip: string;
+  name?: string | null;
+  source_name: string;
 }
 
 export interface ScanProfileItem {

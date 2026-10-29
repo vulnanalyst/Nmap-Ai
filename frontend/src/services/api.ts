@@ -1,6 +1,7 @@
 import type {
   AlertItem,
   DashboardSummary,
+  DatasetTargetItem,
   FindingItem,
   HostItem,
   IngestionStatusItem,
@@ -87,6 +88,16 @@ export const api = {
     return res;
   },
 
+  async logout(): Promise<void> {
+    try {
+      await request('/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore network/server errors during logout
+    } finally {
+      removeAuthToken();
+    }
+  },
+
   async checkHealth(): Promise<{ status: string }> {
     return request<{ status: string }>('/health');
   },
@@ -139,6 +150,7 @@ export const api = {
     confirmTarget: string;
     confirmAuthorization: boolean;
     dryRun?: boolean;
+    datasetTargetId?: number | null;
   }): Promise<ScanJobItem> {
     return request<ScanJobItem>('/scans', {
       method: 'POST',
@@ -148,6 +160,7 @@ export const api = {
         confirm_target: params.confirmTarget,
         confirm_authorization: params.confirmAuthorization,
         dry_run: params.dryRun || false,
+        dataset_target_id: params.datasetTargetId ?? null,
       }),
     });
   },
@@ -156,22 +169,35 @@ export const api = {
     return request<{ items: ScanJobItem[] }>('/scans');
   },
 
+  async getScan(scanId: string): Promise<ScanJobItem> {
+    return request<ScanJobItem>(`/scans/${scanId}`);
+  },
+
+  async getDatasetTargets(): Promise<{ items: DatasetTargetItem[] }> {
+    return request<{ items: DatasetTargetItem[] }>('/scans/targets');
+  },
+
+  async importTargetDataset(file: File): Promise<{ items: DatasetTargetItem[]; count: number }> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    return request<{ items: DatasetTargetItem[]; count: number }>('/scans/targets/import', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
   async cancelScan(scanId: string): Promise<ScanJobItem> {
     return request<ScanJobItem>(`/scans/${scanId}/cancel`, { method: 'POST' });
   },
 
-  async importXml(file: File): Promise<{
+  async importXml(file: File): Promise<ScanJobItem & {
     scan_id: string;
-    hosts_up: number;
-    ports_open: number;
     findings_created: number;
   }> {
     const formData = new FormData();
     formData.append('file', file, file.name);
-    return request<{
+    return request<ScanJobItem & {
       scan_id: string;
-      hosts_up: number;
-      ports_open: number;
       findings_created: number;
     }>('/scans/import', {
       method: 'POST',

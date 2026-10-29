@@ -20,6 +20,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("NMAP_AI_API_TOKEN", "test-token")
     monkeypatch.setenv("NMAP_AI_USERNAME", "lab")
     monkeypatch.setenv("NMAP_AI_PASSWORD", "labpass")
+    monkeypatch.setenv("NMAP_AI_TARGET_IP", "")
+    monkeypatch.setenv("NMAP_AI_AUTHORIZED_TARGETS", "")
     get_settings.cache_clear()
     reset_engine()
     init_db()

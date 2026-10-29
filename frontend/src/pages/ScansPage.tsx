@@ -14,7 +14,7 @@ import { Card } from '../components/common/Card';
 import { Modal } from '../components/common/Modal';
 import { LoadingSkeleton } from '../components/common/LoadingState';
 import { EmptyState, ErrorBanner } from '../components/common/EmptyState';
-import type { ScanJobItem, ScanProfileItem, SettingsData } from '../types';
+import type { DatasetTargetItem, ScanJobItem, ScanProfileItem, SettingsData } from '../types';
 
 export const ScansPage: React.FC = () => {
   const { showToast } = useApp();
@@ -22,12 +22,14 @@ export const ScansPage: React.FC = () => {
   const [profiles, setProfiles] = useState<ScanProfileItem[]>([]);
   const [nmapStatus, setNmapStatus] = useState<{ installed: boolean; path: string; version?: string | null; guidance?: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
+  const [datasetTargets, setDatasetTargets] = useState<DatasetTargetItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // New Scan Form State
   const [selectedProfile, setSelectedProfile] = useState<string>('tcp_connect');
   const [targetInput, setTargetInput] = useState<string>('');
+  const [selectedDatasetTargetId, setSelectedDatasetTargetId] = useState<number | null>(null);
   const [confirmTargetInput, setConfirmTargetInput] = useState<string>('');
   const [authorizedChecked, setAuthorizedChecked] = useState<boolean>(false);
   const [dryRunChecked, setDryRunChecked] = useState<boolean>(false);
@@ -39,23 +41,25 @@ export const ScansPage: React.FC = () => {
 
   // XML Import
   const [uploading, setUploading] = useState<boolean>(false);
+  const [datasetUploading, setDatasetUploading] = useState<boolean>(false);
 
   // Scan Inspector Modal
   const [inspectScan, setInspectScan] = useState<ScanJobItem | null>(null);
 
   const fetchScanData = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
-      const [scansRes, profilesRes, settingsRes] = await Promise.all([
+      const [scansRes, profilesRes, settingsRes, datasetRes] = await Promise.all([
         api.getScans(),
         api.getScanProfiles(),
         api.getSettings(),
+        api.getDatasetTargets(),
       ]);
+      setError(null);
       setScans(scansRes.items);
       setProfiles(profilesRes.profiles);
       setNmapStatus(profilesRes.nmap);
       setSettings(settingsRes);
+      setDatasetTargets(datasetRes.items);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to fetch scan data');
     } finally {
@@ -64,9 +68,12 @@ export const ScansPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchScanData();
-    const interval = setInterval(fetchScanData, 5000);
-    return () => clearInterval(interval);
+    const initialLoad = window.setTimeout(() => void fetchScanData(), 0);
+    const interval = window.setInterval(() => void fetchScanData(), 5000);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.clearInterval(interval);
+    };
   }, [fetchScanData]);
 
   // Dry run preview handler
@@ -103,9 +110,11 @@ export const ScansPage: React.FC = () => {
         confirmTarget: confirmTargetInput.trim(),
         confirmAuthorization: authorizedChecked,
         dryRun: dryRunChecked,
+        datasetTargetId: selectedDatasetTargetId,
       });
       showToast(`Scan initiated [ID: ${job.id.slice(0, 8)}]`, 'success');
       setTargetInput('');
+      setSelectedDatasetTargetId(null);
       setConfirmTargetInput('');
       setAuthorizedChecked(false);
       fetchScanData();
@@ -134,13 +143,43 @@ export const ScansPage: React.FC = () => {
     try {
       setUploading(true);
       const res = await api.importXml(file);
-      showToast(`XML Imported: ${res.hosts_up} hosts up, ${res.ports_open} open ports, ${res.findings_created} findings.`, 'success');
+      showToast(
+        res.duplicate
+          ? `This XML was already imported as scan ${res.scan_id.slice(0, 8)}.`
+          : `XML imported: ${res.hosts_up} hosts up, ${res.ports_open} open ports, ${res.findings_created} findings.`,
+        'success',
+      );
       fetchScanData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to parse Nmap XML file', 'error');
     } finally {
       setUploading(false);
       e.target.value = '';
+    }
+  };
+
+  const handleDatasetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setDatasetUploading(true);
+      const result = await api.importTargetDataset(file);
+      setDatasetTargets(result.items);
+      showToast(`Imported ${result.count} authorized dataset target(s).`, 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to import target CSV', 'error');
+    } finally {
+      setDatasetUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleInspectScan = async (scan: ScanJobItem) => {
+    setInspectScan(scan);
+    try {
+      setInspectScan(await api.getScan(scan.id));
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to load scan details', 'error');
     }
   };
 
@@ -210,10 +249,34 @@ export const ScansPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">Target IP or CIDR</label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const selected = datasetTargets.find((target) => target.id === Number(e.target.value));
+                      if (selected) {
+                        setTargetInput(selected.ip);
+                        setSelectedDatasetTargetId(selected.id);
+                        setConfirmTargetInput('');
+                      }
+                    }}
+                    className="mb-2 w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-300 text-xs"
+                  >
+                    <option value="">Choose an authorized dataset target…</option>
+                    {datasetTargets.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {target.name ? `${target.name} — ` : ''}{target.ip}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     type="text"
                     value={targetInput}
-                    onChange={(e) => setTargetInput(e.target.value)}
+                    onChange={(e) => {
+                      setTargetInput(e.target.value);
+                      if (datasetTargets.find((target) => target.id === selectedDatasetTargetId)?.ip !== e.target.value) {
+                        setSelectedDatasetTargetId(null);
+                      }
+                    }}
                     placeholder="e.g. 192.168.1.50 or 10.0.0.0/24"
                     className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-100 font-mono text-xs focus:outline-hidden focus:border-cyan-500"
                     required
@@ -308,10 +371,27 @@ export const ScansPage: React.FC = () => {
           </Card>
 
           {/* XML Upload Box */}
-          <Card title="Import Existing Nmap XML" icon={<Upload className="w-4 h-4" />}>
+          <Card title="Dataset Targets & XML Import" icon={<Upload className="w-4 h-4" />}>
             <div className="text-xs space-y-3">
               <p className="text-slate-400 text-[11px]">
-                Import structured output from a prior scan (`-oX scan.xml`). Parsing is evidence-based and deterministic.
+                The bundled CIC-IDS2017 files contain flow features, not scan targets. Import a target inventory CSV with an <code>ip</code> or <code>ip_address</code> column and optional <code>name</code> or <code>target_name</code>. Every IP must be on the Authorized Target CIDR Allowlist.
+              </p>
+              <label className="border border-dashed border-slate-800 hover:border-cyan-500/80 rounded-lg p-3 flex items-center justify-center gap-2 cursor-pointer bg-slate-900/40">
+                <span className="text-cyan-400">{datasetUploading ? 'Importing targets…' : 'Import authorized targets CSV'}</span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleDatasetUpload}
+                  disabled={datasetUploading}
+                  className="hidden"
+                />
+              </label>
+              <div className="text-slate-500 text-[10px]">
+                {datasetTargets.length} authorized dataset target(s) loaded
+              </div>
+              <div className="border-t border-slate-800 pt-3" />
+              <p className="text-slate-400 text-[11px]">
+                Import completed Nmap XML from this machine or securely upload it from Kali. Run Nmap with <code>-oX scan-results.xml</code>; this does not automatically detect terminal scans.
               </p>
               <label className="border-2 border-dashed border-slate-800 hover:border-cyan-500/80 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-900/40">
                 <Upload className="w-5 h-5 text-cyan-400 mb-1.5" />
@@ -356,7 +436,7 @@ export const ScansPage: React.FC = () => {
                   <th className="py-3 px-4">Target(s)</th>
                   <th className="py-3 px-4">Open Ports</th>
                   <th className="py-3 px-4">Duration</th>
-                  <th className="py-3 px-4">Created At</th>
+                  <th className="py-3 px-4">Scanned At</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -382,7 +462,7 @@ export const ScansPage: React.FC = () => {
                       {scan.id.slice(0, 8)}...
                     </td>
                     <td className="py-3 px-4 font-medium text-slate-200">
-                      {scan.profile}
+                      {scan.profile} <span className="ml-1 text-[10px] text-cyan-400">{scan.scan_source}</span>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-300">
                       {scan.targets}
@@ -396,7 +476,9 @@ export const ScansPage: React.FC = () => {
                       {scan.duration_seconds != null ? `${scan.duration_seconds.toFixed(1)}s` : '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
-                      {scan.created_at ? new Date(scan.created_at).toLocaleString() : 'N/A'}
+                      {scan.started_at || scan.created_at
+                        ? new Date(scan.started_at || scan.created_at || '').toLocaleString()
+                        : 'N/A'}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -410,7 +492,7 @@ export const ScansPage: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => setInspectScan(scan)}
+                          onClick={() => handleInspectScan(scan)}
                           className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs transition-colors"
                         >
                           Details
@@ -454,7 +536,7 @@ export const ScansPage: React.FC = () => {
         isOpen={Boolean(inspectScan)}
         onClose={() => setInspectScan(null)}
         title={`Scan Inspection [${inspectScan?.id.slice(0, 8)}]`}
-        subtitle={`Profile: ${inspectScan?.profile} &bull; Target: ${inspectScan?.targets}`}
+        subtitle={`${inspectScan?.scan_source || 'Nmap-AI'} · Profile: ${inspectScan?.profile} · Target: ${inspectScan?.targets}`}
         maxWidth="max-w-2xl"
       >
         {inspectScan && (
@@ -463,6 +545,14 @@ export const ScansPage: React.FC = () => {
               <div>
                 <span className="text-slate-500 block">Status</span>
                 <span className="text-slate-200 font-semibold">{inspectScan.status.toUpperCase()}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Started / Finished</span>
+                <span className="text-slate-200">
+                  {inspectScan.started_at ? new Date(inspectScan.started_at).toLocaleString() : 'N/A'}
+                  {' / '}
+                  {inspectScan.finished_at ? new Date(inspectScan.finished_at).toLocaleString() : 'N/A'}
+                </span>
               </div>
               <div>
                 <span className="text-slate-500 block">Duration</span>
@@ -487,12 +577,47 @@ export const ScansPage: React.FC = () => {
               </div>
             )}
 
+            {inspectScan.source_name && (
+              <div className="text-slate-400">
+                Imported file: <span className="font-mono text-slate-200">{inspectScan.source_name}</span>
+              </div>
+            )}
             <div>
-              <span className="text-slate-400 block mb-1 font-semibold">Executed Command Argument Array:</span>
+              <span className="text-slate-400 block mb-1 font-semibold">
+                {inspectScan.scan_source === 'manual/imported' ? 'Command recorded in Nmap XML:' : 'Executed Command Argument Array:'}
+              </span>
               <pre className="p-3 bg-slate-950 rounded text-slate-300 font-mono text-[11px] border border-slate-800 overflow-x-auto">
-                {JSON.stringify(inspectScan.argv, null, 2)}
+                {inspectScan.scanner_args || JSON.stringify(inspectScan.argv, null, 2)}
               </pre>
             </div>
+            {inspectScan.hosts && (
+              <div>
+                <span className="text-slate-400 block mb-2 font-semibold">Recorded hosts and services</span>
+                {inspectScan.hosts.length === 0 ? (
+                  <p className="text-slate-500">The scan XML contained no host records.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {inspectScan.hosts.map((host) => (
+                      <div key={host.ip} className="rounded border border-slate-800 bg-slate-900 p-3">
+                        <div className="font-mono text-cyan-300">{host.ip} · {host.state}{host.hostname ? ` · ${host.hostname}` : ''}</div>
+                        {host.services.length === 0 ? (
+                          <div className="mt-1 text-slate-500">No ports recorded</div>
+                        ) : (
+                          <ul className="mt-2 space-y-1">
+                            {host.services.map((service) => (
+                              <li key={`${service.protocol}/${service.port}`} className="font-mono text-slate-300">
+                                {service.protocol}/{service.port} {service.state}
+                                {[service.name, service.product, service.version].filter(Boolean).join(' ')}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Modal>

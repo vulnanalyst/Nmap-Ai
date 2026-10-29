@@ -74,5 +74,5 @@ def dashboard_summary(db: Session) -> dict:
             }
             for s in scans.order_by(ScanJob.created_at.asc()).limit(20).all()
         ],
-        "data_source_filter": "live+import",
+        "data_source_filter": "live+manual_import",
     }

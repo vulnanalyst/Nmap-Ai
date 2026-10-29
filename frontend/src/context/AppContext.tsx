@@ -13,7 +13,7 @@ interface AppContextValue {
   backendOnline: boolean;
   authenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   toast: Toast | null;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
@@ -53,10 +53,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await refreshSettings();
   }, [refreshSettings]);
 
-  const logout = useCallback(() => {
-    removeAuthToken();
-    setAuthenticated(false);
-    setSettings(null);
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } finally {
+      removeAuthToken();
+      setAuthenticated(false);
+      setSettings(null);
+    }
   }, []);
 
   useEffect(() => {

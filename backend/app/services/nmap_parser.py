@@ -13,14 +13,20 @@ def parse_nmap_xml(source: str | Path | bytes) -> dict[str, Any]:
     """Parse Nmap XML into a normalized dict without inventing hosts or ports."""
     try:
         if isinstance(source, bytes):
+            _reject_xml_entities(source)
             root = ET.fromstring(source)
         else:
             path = Path(source)
             if path.exists():
-                tree = ET.parse(path)
-                root = tree.getroot()
+                content = path.read_bytes()
+                _reject_xml_entities(content)
+                root = ET.fromstring(content)
             else:
-                root = ET.fromstring(str(source))
+                content = str(source).encode("utf-8")
+                _reject_xml_entities(content)
+                root = ET.fromstring(content)
+    except NmapParseError:
+        raise
     except ET.ParseError as exc:
         raise NmapParseError(f"Invalid Nmap XML: {exc}") from exc
 
@@ -46,6 +52,7 @@ def parse_nmap_xml(source: str | Path | bytes) -> dict[str, Any]:
         "version": root.attrib.get("version"),
         "xmloutputversion": root.attrib.get("xmloutputversion"),
         "elapsed": _to_float(finished.attrib.get("elapsed") if finished is not None else None),
+        "finished_time": _to_float(finished.attrib.get("time") if finished is not None else None),
         "exit": finished.attrib.get("exit") if finished is not None else None,
         "hosts_up": _to_int(hosts_stats.attrib.get("up") if hosts_stats is not None else None),
         "hosts_down": _to_int(hosts_stats.attrib.get("down") if hosts_stats is not None else None),
@@ -54,6 +61,12 @@ def parse_nmap_xml(source: str | Path | bytes) -> dict[str, Any]:
         "hosts": hosts,
         "provenance": "nmap_xml",
     }
+
+
+def _reject_xml_entities(content: bytes) -> None:
+    upper_content = content.upper()
+    if b"<!ENTITY" in upper_content or b" SYSTEM " in upper_content or b" PUBLIC " in upper_content:
+        raise NmapParseError("External and declared XML entities are not allowed")
 
 
 def _parse_host(host_el: ET.Element, port_counts: dict[str, int]) -> dict[str, Any]:

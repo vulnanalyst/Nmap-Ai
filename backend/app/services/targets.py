@@ -34,8 +34,6 @@ def load_allowlist(db: Session) -> list[str]:
     rows = [row.cidr for row in db.query(AuthorizedTarget).all()]
     settings = get_settings()
     extra = [part.strip() for part in settings.authorized_targets.split(",") if part.strip()]
-    if settings.target_ip:
-        extra.append(settings.target_ip.strip())
     merged = []
     for item in rows + extra:
         parse_target(item)

@@ -12,7 +12,7 @@ Nmap-AI is a local-first application for authorized network discovery, Nmap scan
 - **Reports** — generate and download JSON/PDF summaries from stored records.
 - **Settings** — configure scanner details and the CIDR allowlist.
 
-The optional flow classifier is trained on the included CIC-IDS2017 PortScan dataset and can classify sufficiently complete telemetry flows. Its predictions are not proof of compromise and are separate from Nmap vulnerability findings.
+The optional flow classifier is trained on the included CIC-IDS2017 PortScan dataset and can classify sufficiently complete telemetry flows. Those files contain flow features, not a target inventory. To select scan targets from a CSV, import a separate target inventory with an `ip` (or `ip_address`) column and optional `name` (or `target_name`) column from **Scan Management**. Every listed address must be covered by the Authorized Target CIDR Allowlist.
 
 ## Requirements
 
@@ -55,6 +55,46 @@ Open `http://127.0.0.1:5173`. Sign in with `NMAP_AI_USERNAME` and `NMAP_AI_PASSW
 3. Use **Scan Management** to inspect the argument preview, confirm the exact target and authorization, then explicitly start the scan.
 
 The application does not schedule scans or select targets automatically. Scan execution uses a structured argument list (not a shell), an allowlist check, explicit operator confirmation, and a timeout. The `safe` Nmap script profile uses the `safe` script category; scan impact still depends on the target and network. Import existing XML when active scanning is not appropriate.
+
+### Windows backend with Nmap on Kali
+
+The backend executes Nmap on the machine where the backend process runs. A Windows backend cannot run Kali's `/usr/bin/nmap`; setting `NMAP_AI_NMAP_PATH=/usr/bin/nmap` on Windows does not connect it to Kali. The dashboard reports the local scanner as unavailable rather than showing a successful scan. Do not expose a remote command-execution endpoint to bridge this gap.
+
+For a Windows-hosted dashboard and Kali scanner, export Nmap XML on Kali and upload it through the existing authenticated **Scan Management → Import Existing Nmap XML** control. The API validates every host IP in the XML against the saved target allowlist, persists the parsed scan, and deduplicates byte-identical imports.
+
+1. Add the exact allowed target in **Settings → Authorized Target CIDR Allowlist** (for example, `192.168.56.101/32`). Keep the dashboard API bound to loopback if only using browser file upload from Windows.
+2. If you need Kali to upload directly, add these local-only settings to the Windows `.env` file (replace the token with a unique secret):
+
+   ```dotenv
+   NMAP_AI_HOST=0.0.0.0
+   NMAP_AI_API_TOKEN=<unique-random-token>
+   ```
+
+   Start the backend from PowerShell with `.\.venv\Scripts\python.exe main.py`. In an elevated PowerShell, restrict the inbound backend port to Kali's host-only address:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Nmap-AI Kali XML import" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -RemoteAddress 192.168.56.102 -Profile Private
+   ```
+
+   Do not expose this API to the public Internet. Find the Windows host-only IP with `ipconfig` and use it in place of `<WINDOWS_HOST_ONLY_IP>` below. If Windows marks the host-only network as Public, do not broaden the firewall rule; configure the isolated adapter/profile deliberately.
+3. On Kali, run only a scan you are authorized to perform and save its XML:
+
+   ```bash
+   nmap -sV -oX scan-results.xml 192.168.56.101
+   ```
+
+4. Upload the completed file using the API token configured by the backend operator:
+
+   ```bash
+   read -rsp "Nmap-AI API token: " NMAP_AI_API_TOKEN; echo
+   curl --fail --show-error --connect-timeout 5 --max-time 60 \
+     -H "X-API-Key: ${NMAP_AI_API_TOKEN}" \
+     -F "file=@scan-results.xml;type=application/xml" \
+     "http://<WINDOWS_HOST_ONLY_IP>:8000/api/v1/scans/import"
+   unset NMAP_AI_API_TOKEN
+   ```
+
+   The API accepts XML files up to 20 MB. Alternatively, copy the XML to Windows and use the authenticated UI upload. Manual terminal scans are **not** automatically detected; the XML upload is the supported import workflow. The CSV target inventory upload is limited to 2 MB / 10,000 unique IP addresses.
 
 ## Telemetry and machine learning
 
